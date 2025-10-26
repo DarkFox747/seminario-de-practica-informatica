@@ -1,385 +1,261 @@
 -- =========================================================
--- Esquema: proyecto_db  (MySQL 8+)
+-- Local Code Review Assistant - Esquema MySQL
 -- =========================================================
-CREATE DATABASE IF NOT EXISTS proyecto_db
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_0900_ai_ci;
-USE proyecto_db;
+-- Recomendado: ejecutar con MySQL 8.x
+-- =========================================================
 
--- Sugerido para consistencia
+-- (Opcional) Crear base de datos
+CREATE DATABASE IF NOT EXISTS code_review_local
+  DEFAULT CHARACTER SET utf8mb4
+  DEFAULT COLLATE utf8mb4_0900_ai_ci;
+USE code_review_local;
+
 SET NAMES utf8mb4;
-SET time_zone = '+00:00';
+SET FOREIGN_KEY_CHECKS = 0;
 
 -- =========================================================
--- Tablas base
+-- Tablas de Catálogo / Lookup
 -- =========================================================
 
-CREATE TABLE IF NOT EXISTS usuario (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  nombre VARCHAR(120) NOT NULL,
-  email VARCHAR(160) NOT NULL UNIQUE,
-  rol VARCHAR(40) NOT NULL COMMENT 'ADMIN/DEVOPS/REVISOR (catálogo de aplicación)',
-  activo BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS user_role_type;
+CREATE TABLE user_role_type (
+  code        VARCHAR(20) PRIMARY KEY,        -- DEVELOPER, TECH_LEAD, QA, ADMIN
+  description VARCHAR(100)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS repo (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  proveedor ENUM('GITHUB','GITLAB','BITBUCKET') NOT NULL,
-  nombre VARCHAR(160) NOT NULL,
-  slug VARCHAR(160),
-  remoto_url VARCHAR(300) NOT NULL,
-  external_id VARCHAR(80),
-  activo BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_repo_provider_url (proveedor, remoto_url),
-  KEY idx_repo_external (proveedor, external_id)
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS run_status_type;
+CREATE TABLE run_status_type (
+  code        VARCHAR(20) PRIMARY KEY,        -- SUCCESS, ERROR, EMPTY_DIFF
+  description VARCHAR(100)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS politica (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  nombre VARCHAR(120) NOT NULL,
-  version VARCHAR(40) NOT NULL,
-  activa BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_politica_nombre_version (nombre, version)
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS file_change_type;
+CREATE TABLE file_change_type (
+  code        VARCHAR(20) PRIMARY KEY,        -- ADDED, MODIFIED, DELETED, RENAMED
+  description VARCHAR(100)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS plantilla_notificacion (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  codigo VARCHAR(80) NOT NULL UNIQUE,
-  asunto_template VARCHAR(200) NOT NULL,
-  cuerpo_template TEXT NOT NULL,
-  descripcion VARCHAR(200)
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS reporte (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  nombre VARCHAR(160) NOT NULL,
-  descripcion TEXT,
-  formato VARCHAR(10) NOT NULL DEFAULT 'CSV' COMMENT 'CSV|PDF|JSON',
-  definicion_sql TEXT NOT NULL,
-  activo BOOLEAN NOT NULL DEFAULT TRUE,
-  created_by BIGINT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_reporte_created_by (created_by),
-  CONSTRAINT fk_reporte_created_by
-    FOREIGN KEY (created_by) REFERENCES usuario(id)
-    ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS severity_type;
+CREATE TABLE severity_type (
+  code        VARCHAR(20) PRIMARY KEY,        -- CRITICAL, HIGH, MEDIUM, LOW
+  description VARCHAR(100)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =========================================================
--- PRs y actividad de VCS
+-- Entidades Core
 -- =========================================================
 
-CREATE TABLE IF NOT EXISTS pull_request (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  repo_id BIGINT NOT NULL,
-  numero INT NOT NULL,
-  titulo VARCHAR(200),
-  autor_id BIGINT NULL,
-  estado ENUM('OPEN','CLOSED','MERGED') NOT NULL DEFAULT 'OPEN',
-  base_sha VARCHAR(40) NOT NULL,
-  head_sha VARCHAR(40) NOT NULL,
-  link_url VARCHAR(300),
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NULL DEFAULT NULL,
-  UNIQUE KEY uq_pr_repo_num (repo_id, numero),
-  KEY idx_pr_estado (estado),
-  KEY idx_pr_updated (updated_at),
-  CONSTRAINT fk_pr_repo
-    FOREIGN KEY (repo_id) REFERENCES repo(id)
-    ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT fk_pr_autor
-    FOREIGN KEY (autor_id) REFERENCES usuario(id)
-    ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS users;
+CREATE TABLE users (
+  id          VARCHAR(36)  NOT NULL,
+  name        VARCHAR(120) NOT NULL,
+  email       VARCHAR(180) NOT NULL,
+  role_code   VARCHAR(20)  NOT NULL,
+  active      TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pk_users PRIMARY KEY (id),
+  CONSTRAINT uq_users_email UNIQUE (email),
+  CONSTRAINT fk_users_role FOREIGN KEY (role_code)
+    REFERENCES user_role_type(code)
+    ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS pr_commit (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  pr_id BIGINT NOT NULL,
-  sha VARCHAR(40) NOT NULL,
-  parent_sha VARCHAR(40),
-  autor_nombre VARCHAR(120),
-  autor_email VARCHAR(160),
-  authored_at TIMESTAMP NULL,
-  committed_at TIMESTAMP NULL,
-  mensaje TEXT,
-  stats_add INT,
-  stats_del INT,
-  stats_files INT,
-  UNIQUE KEY uq_commit_sha (sha),
-  KEY idx_commit_pr (pr_id),
-  CONSTRAINT fk_commit_pr
-    FOREIGN KEY (pr_id) REFERENCES pull_request(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS repositories;
+CREATE TABLE repositories (
+  id          VARCHAR(36)   NOT NULL,
+  local_path  VARCHAR(512)  NOT NULL,
+  vcs         VARCHAR(20)   NOT NULL,   -- 'git'
+  created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pk_repositories PRIMARY KEY (id),
+  KEY idx_repositories_local_path (local_path)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS pr_file_change (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  pr_id BIGINT NOT NULL,
-  path VARCHAR(400) NOT NULL,
-  status VARCHAR(16) NOT NULL COMMENT 'added|modified|deleted|renamed',
-  additions INT,
-  deletions INT,
-  changes INT,
-  module VARCHAR(160),
-  language VARCHAR(40),
-  blob_id VARCHAR(64),
-  UNIQUE KEY uq_change_pr_path (pr_id, path),
-  KEY idx_change_module (module),
-  CONSTRAINT fk_change_pr
-    FOREIGN KEY (pr_id) REFERENCES pull_request(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS severity_policies;
+CREATE TABLE severity_policies (
+  id             VARCHAR(36)   NOT NULL,
+  name           VARCHAR(120)  NOT NULL,
+  rules_json     TEXT          NOT NULL,   -- mapeo de categorías -> severidades
+  version        INT           NOT NULL,
+  effective_from DATE          NOT NULL,
+  created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pk_severity_policies PRIMARY KEY (id),
+  KEY idx_policies_version (version)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS pr_status_history (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  pr_id BIGINT NOT NULL,
-  contexto VARCHAR(80) NOT NULL DEFAULT 'risk-check',
-  estado VARCHAR(32) NOT NULL COMMENT 'success|failure|warning|pending',
-  descripcion VARCHAR(300),
-  target_url VARCHAR(300),
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_status_ctx_time (pr_id, contexto, created_at),
-  CONSTRAINT fk_status_pr
-    FOREIGN KEY (pr_id) REFERENCES pull_request(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS endpoint_mocks;
+CREATE TABLE endpoint_mocks (
+  id          VARCHAR(36)   NOT NULL,
+  name        VARCHAR(120)  NOT NULL,
+  version     VARCHAR(40)   NOT NULL,
+  spec        TEXT          NOT NULL,     -- contrato JSON simulado
+  active      TINYINT(1)    NOT NULL DEFAULT 1,
+  created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pk_endpoint_mocks PRIMARY KEY (id),
+  KEY idx_endpoint_mocks_active (active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- =========================================================
--- Políticas y reglas
--- =========================================================
+DROP TABLE IF EXISTS analysis_runs;
+CREATE TABLE analysis_runs (
+  id            VARCHAR(36)   NOT NULL,
+  user_id       VARCHAR(36)   NOT NULL,
+  repo_id       VARCHAR(36)   NOT NULL,
+  policy_id     VARCHAR(36)   NOT NULL,
+  endpoint_id   VARCHAR(36)       NULL,   -- puede ser NULL si el mock está embebido
+  base_branch   VARCHAR(100)  NOT NULL,
+  target_branch VARCHAR(100)  NOT NULL,
+  status_code   VARCHAR(20)   NOT NULL,
+  started_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at   DATETIME          NULL,
+  duration_ms   BIGINT            NULL,
+  created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pk_analysis_runs PRIMARY KEY (id),
+  CONSTRAINT fk_runs_user FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_runs_repo FOREIGN KEY (repo_id)
+    REFERENCES repositories(id)
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_runs_policy FOREIGN KEY (policy_id)
+    REFERENCES severity_policies(id)
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_runs_endpoint FOREIGN KEY (endpoint_id)
+    REFERENCES endpoint_mocks(id)
+    ON UPDATE RESTRICT ON DELETE SET NULL,
+  CONSTRAINT fk_runs_status FOREIGN KEY (status_code)
+    REFERENCES run_status_type(code)
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
+  KEY idx_runs_user_started (user_id, started_at),
+  KEY idx_runs_repo_started (repo_id, started_at),
+  KEY idx_runs_status (status_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS umbral (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  politica_id BIGINT NOT NULL,
-  warn ENUM('BAJO','MEDIO','ALTO','CRITICO') NOT NULL DEFAULT 'MEDIO',
-  block ENUM('BAJO','MEDIO','ALTO','CRITICO') NOT NULL DEFAULT 'ALTO',
-  max_tiempo_seg INT NOT NULL DEFAULT 300,
-  KEY idx_umbral_politica (politica_id),
-  CONSTRAINT fk_umbral_politica
-    FOREIGN KEY (politica_id) REFERENCES politica(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS diff_files;
+CREATE TABLE diff_files (
+  id                 VARCHAR(36)  NOT NULL,
+  run_id             VARCHAR(36)  NOT NULL,
+  path               VARCHAR(512) NOT NULL,
+  change_type_code   VARCHAR(20)  NOT NULL,
+  additions          INT          NOT NULL DEFAULT 0,
+  deletions          INT          NOT NULL DEFAULT 0,
+  CONSTRAINT pk_diff_files PRIMARY KEY (id),
+  CONSTRAINT fk_diff_run FOREIGN KEY (run_id)
+    REFERENCES analysis_runs(id)
+    ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT fk_diff_change_type FOREIGN KEY (change_type_code)
+    REFERENCES file_change_type(code)
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
+  KEY idx_diff_run (run_id),
+  KEY idx_diff_path (path)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS regla (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  politica_id BIGINT NOT NULL,
-  codigo VARCHAR(80) NOT NULL,
-  tipo VARCHAR(40) NOT NULL COMMENT 'DEPENDENCY|SECURITY|METRIC|STYLE',
-  severidad ENUM('BAJO','MEDIO','ALTO','CRITICO') NOT NULL,
-  parametros_json TEXT,
-  activa BOOLEAN NOT NULL DEFAULT TRUE,
-  UNIQUE KEY uq_regla_codigo (politica_id, codigo),
-  CONSTRAINT fk_regla_politica
-    FOREIGN KEY (politica_id) REFERENCES politica(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS modulo_critico (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  politica_id BIGINT NOT NULL,
-  patron VARCHAR(200) NOT NULL,
-  UNIQUE KEY uq_modcrit_patron (politica_id, patron),
-  CONSTRAINT fk_modcrit_politica
-    FOREIGN KEY (politica_id) REFERENCES politica(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS ruta_sensible (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  politica_id BIGINT NOT NULL,
-  patron VARCHAR(300) NOT NULL,
-  UNIQUE KEY uq_ruta_patron (politica_id, patron),
-  CONSTRAINT fk_ruta_politica
-    FOREIGN KEY (politica_id) REFERENCES politica(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS exclusion (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  politica_id BIGINT NOT NULL,
-  patron VARCHAR(300) NOT NULL,
-  motivo VARCHAR(200),
-  UNIQUE KEY uq_exclusion_patron (politica_id, patron),
-  CONSTRAINT fk_exclusion_politica
-    FOREIGN KEY (politica_id) REFERENCES politica(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS findings;
+CREATE TABLE findings (
+  id             VARCHAR(36)  NOT NULL,
+  run_id         VARCHAR(36)  NOT NULL,
+  code           VARCHAR(64)  NOT NULL,    -- identificador de regla del mock
+  title          VARCHAR(255) NOT NULL,
+  description    TEXT         NOT NULL,
+  severity_code  VARCHAR(20)  NOT NULL,
+  file_path      VARCHAR(512) NOT NULL,
+  line_start     INT          NULL,
+  line_end       INT          NULL,
+  category       VARCHAR(64)  NULL,
+  created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pk_findings PRIMARY KEY (id),
+  CONSTRAINT fk_findings_run FOREIGN KEY (run_id)
+    REFERENCES analysis_runs(id)
+    ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT fk_findings_sev FOREIGN KEY (severity_code)
+    REFERENCES severity_type(code)
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
+  KEY idx_findings_run_sev (run_id, severity_code),
+  KEY idx_findings_file (file_path),
+  KEY idx_findings_category (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- =========================================================
--- Resultados de análisis por PR
+-- Analítica / Preferencias
 -- =========================================================
 
-CREATE TABLE IF NOT EXISTS analisis_pr (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  repo_id BIGINT NOT NULL,
-  pr_id BIGINT NOT NULL,
-  base_sha VARCHAR(40) NOT NULL,
-  head_sha VARCHAR(40) NOT NULL,
-  politica_id BIGINT NOT NULL,
-  politica_version VARCHAR(40) NOT NULL,
-  riesgo ENUM('BAJO','MEDIO','ALTO','CRITICO') NOT NULL,
-  puntaje DECIMAL(5,2),
-  parcial BOOLEAN NOT NULL DEFAULT FALSE,
-  tiempo_ms INT,
-  artefacto_json VARCHAR(300),
-  artefacto_pdf VARCHAR(300),
-  resumen TEXT,
-  started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  ended_at TIMESTAMP NULL DEFAULT NULL,
-  KEY idx_analisis_pr_time (pr_id, ended_at),
-  KEY idx_analisis_repo_time (repo_id, started_at),
-  CONSTRAINT fk_analisis_repo
-    FOREIGN KEY (repo_id) REFERENCES repo(id)
-    ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT fk_analisis_pr
-    FOREIGN KEY (pr_id) REFERENCES pull_request(id)
-    ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT fk_analisis_politica
-    FOREIGN KEY (politica_id) REFERENCES politica(id)
-    ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS user_stats;
+CREATE TABLE user_stats (
+  id              VARCHAR(36) NOT NULL,
+  user_id         VARCHAR(36) NOT NULL,
+  period_start    DATE        NOT NULL,
+  period_end      DATE        NOT NULL,
+  analyses_count  INT         NOT NULL DEFAULT 0,
+  findings_count  INT         NOT NULL DEFAULT 0,
+  critical_count  INT         NOT NULL DEFAULT 0,
+  high_count      INT         NOT NULL DEFAULT 0,
+  medium_count    INT         NOT NULL DEFAULT 0,
+  low_count       INT         NOT NULL DEFAULT 0,
+  created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pk_user_stats PRIMARY KEY (id),
+  CONSTRAINT fk_user_stats_user FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT uq_user_stats_period UNIQUE (user_id, period_start, period_end)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS analisis_pr_impacto (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  analisis_id BIGINT NOT NULL,
-  categoria VARCHAR(40) NOT NULL COMMENT 'DEPENDENCY|SECURITY|METRIC|STYLE',
-  severidad ENUM('BAJO','MEDIO','ALTO','CRITICO') NOT NULL,
-  archivo VARCHAR(400),
-  modulo VARCHAR(160),
-  evidencia_json TEXT,
-  KEY idx_imp_analisis (analisis_id),
-  KEY idx_imp_sev (severidad),
-  CONSTRAINT fk_imp_analisis
-    FOREIGN KEY (analisis_id) REFERENCES analisis_pr(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS metrics_snapshots;
+CREATE TABLE metrics_snapshots (
+  id                 VARCHAR(36) NOT NULL,
+  period_start       DATE        NOT NULL,
+  period_end         DATE        NOT NULL,
+  total_analyses     INT         NOT NULL DEFAULT 0,
+  total_findings     INT         NOT NULL DEFAULT 0,
+  critical_count     INT         NOT NULL DEFAULT 0,
+  high_count         INT         NOT NULL DEFAULT 0,
+  medium_count       INT         NOT NULL DEFAULT 0,
+  low_count          INT         NOT NULL DEFAULT 0,
+  avg_severity_score DOUBLE      NULL,
+  created_at         DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pk_metrics_snapshots PRIMARY KEY (id),
+  KEY idx_metrics_period (period_start, period_end)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS analisis_pr_modulo (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  analisis_id BIGINT NOT NULL,
-  modulo VARCHAR(160) NOT NULL,
-  razon VARCHAR(100) NOT NULL COMMENT 'import|call|contract|query|route',
-  evidencia_json TEXT,
-  UNIQUE KEY uq_mod_razon (analisis_id, modulo, razon),
-  CONSTRAINT fk_mod_analisis
-    FOREIGN KEY (analisis_id) REFERENCES analisis_pr(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
+DROP TABLE IF EXISTS dashboard_views;
+CREATE TABLE dashboard_views (
+  id             VARCHAR(36) NOT NULL,
+  owner_user_id  VARCHAR(36) NOT NULL,
+  filters_json   TEXT        NOT NULL,
+  created_at     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pk_dashboard_views PRIMARY KEY (id),
+  CONSTRAINT fk_dash_owner FOREIGN KEY (owner_user_id)
+    REFERENCES users(id)
+    ON UPDATE RESTRICT ON DELETE CASCADE,
+  KEY idx_dash_owner (owner_user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS silenciamiento_pr (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  repo_id BIGINT NOT NULL,
-  pr_number INT NOT NULL,
-  hasta TIMESTAMP NOT NULL,
-  motivo VARCHAR(200),
-  UNIQUE KEY uq_silencio_pr (repo_id, pr_number),
-  CONSTRAINT fk_silencio_repo
-    FOREIGN KEY (repo_id) REFERENCES repo(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
+SET FOREIGN_KEY_CHECKS = 1;
 
 -- =========================================================
--- Notificaciones
+-- Semillas de catálogos (opcionales pero recomendadas)
 -- =========================================================
 
-CREATE TABLE IF NOT EXISTS notificacion (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  canal ENUM('CLI','LOG','SLACK') NOT NULL,
-  asunto VARCHAR(200) NOT NULL,
-  cuerpo TEXT NOT NULL,
-  usuario_id BIGINT NULL,
-  relacionada_tipo VARCHAR(30),
-  relacionada_id BIGINT,
-  estado ENUM('PENDIENTE','ENVIADA','ERROR') NOT NULL DEFAULT 'PENDIENTE',
-  enviada_at TIMESTAMP NULL DEFAULT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_notif_usuario (usuario_id),
-  KEY idx_notif_estado (estado),
-  KEY idx_notif_relacion (relacionada_tipo, relacionada_id),
-  CONSTRAINT fk_notif_usuario
-    FOREIGN KEY (usuario_id) REFERENCES usuario(id)
-    ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB;
+INSERT INTO user_role_type (code, description) VALUES
+  ('DEVELOPER','Desarrollador'),
+  ('TECH_LEAD','Líder Técnico'),
+  ('QA','Calidad'),
+  ('ADMIN','Administrador')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
 
--- =========================================================
--- Reportes & ejecuciones
--- =========================================================
+INSERT INTO run_status_type (code, description) VALUES
+  ('SUCCESS','Ejecución exitosa'),
+  ('ERROR','Ejecución con error'),
+  ('EMPTY_DIFF','No había cambios para analizar')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
 
-CREATE TABLE IF NOT EXISTS reporte_filtro (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  reporte_id BIGINT NOT NULL,
-  nombre VARCHAR(80) NOT NULL,
-  tipo VARCHAR(30) NOT NULL COMMENT 'date|int|string',
-  valor_default VARCHAR(160),
-  requerido BOOLEAN NOT NULL DEFAULT FALSE,
-  KEY idx_reporte_filtro_reporte (reporte_id),
-  CONSTRAINT fk_rep_filtro_reporte
-    FOREIGN KEY (reporte_id) REFERENCES reporte(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
+INSERT INTO file_change_type (code, description) VALUES
+  ('ADDED','Archivo agregado'),
+  ('MODIFIED','Archivo modificado'),
+  ('DELETED','Archivo eliminado'),
+  ('RENAMED','Archivo renombrado')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
 
-CREATE TABLE IF NOT EXISTS reporte_programacion (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  reporte_id BIGINT NOT NULL,
-  cron_expr VARCHAR(120) NOT NULL,
-  activo BOOLEAN NOT NULL DEFAULT TRUE,
-  ultimo_disparo TIMESTAMP NULL DEFAULT NULL,
-  proximo_disparo TIMESTAMP NULL DEFAULT NULL,
-  KEY idx_reporte_prog_reporte (reporte_id),
-  CONSTRAINT fk_rep_prog_reporte
-    FOREIGN KEY (reporte_id) REFERENCES reporte(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS reporte_ejecucion (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  reporte_id BIGINT NULL,
-  ejecutado_por BIGINT NULL,
-  estado ENUM('PENDIENTE','EN_PROGRESO','OK','ERROR') NOT NULL DEFAULT 'PENDIENTE',
-  parametros_json TEXT,
-  resultado_path VARCHAR(300),
-  started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  ended_at TIMESTAMP NULL DEFAULT NULL,
-  mensaje_error TEXT,
-  KEY idx_ejec_reporte (reporte_id),
-  KEY idx_ejec_usuario (ejecutado_por),
-  KEY idx_ejec_estado (estado),
-  CONSTRAINT fk_ejec_reporte
-    FOREIGN KEY (reporte_id) REFERENCES reporte(id)
-    ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT fk_ejec_usuario
-    FOREIGN KEY (ejecutado_por) REFERENCES usuario(id)
-    ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB;
-
--- =========================================================
--- Auditoría & Observabilidad
--- =========================================================
-
-CREATE TABLE IF NOT EXISTS auditoria (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  entidad_tipo VARCHAR(30) NOT NULL COMMENT 'PR, ANALISIS, POLITICA, REGLA, REPORTE, etc.',
-  entidad_id BIGINT NOT NULL,
-  accion VARCHAR(30) NOT NULL COMMENT 'CREATE, UPDATE, DELETE, EXECUTE, ASSIGN, STATUS',
-  actor_id BIGINT NULL,
-  detalle_json TEXT,
-  creado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_audit_entidad (entidad_tipo, entidad_id),
-  KEY idx_audit_actor (actor_id),
-  CONSTRAINT fk_audit_actor
-    FOREIGN KEY (actor_id) REFERENCES usuario(id)
-    ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB;
-
-CREATE TABLE IF NOT EXISTS metric_event (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  name VARCHAR(80) NOT NULL COMMENT 'p.ej. t_analisis_ms, error_rate, blocked_rate',
-  valor DECIMAL(12,4) NOT NULL,
-  dimensiones_json TEXT,
-  trace_id VARCHAR(64),
-  KEY idx_metric_name_ts (name, ts)
-) ENGINE=InnoDB;
+INSERT INTO severity_type (code, description) VALUES
+  ('CRITICAL','Severidad crítica'),
+  ('HIGH','Severidad alta'),
+  ('MEDIUM','Severidad media'),
+  ('LOW','Severidad baja')
+ON DUPLICATE KEY UPDATE description = VALUES(description);

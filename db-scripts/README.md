@@ -1,24 +1,27 @@
-# Base de Datos — Analizador de PR
+# Base de Datos — Asistente Local de Code Review
 
-Este repositorio contiene los **scripts SQL** para crear y operar la base de datos del sistema de análisis de Pull Requests.  
+Este repositorio contiene los **scripts SQL** para crear y operar la base de datos del **Local Code Review Assistant**.  
 Los archivos principales son:
 
 - `db-creation.sql` → **DDL** completo (creación de esquema/tablas, índices y FKs).
+- `seed.sql` → **Datos de prueba** iniciales para desarrollo y testing.
 - `Comandos_SQL_PR_DB.sql` → **plantillas** de **INSERT / SELECT / DELETE** para todas las tablas.
 
 > Requisitos: **MySQL 8.x**, motor **InnoDB**, charset **utf8mb4**.
 
 ---
 
-## 📦 Estructura sugerida
+## 📦 Estructura del directorio
 
 ```
-/sql
-  ├─ db-creation.sql
-  └─ Comandos_SQL_PR_DB.sql
+/db-scripts
+  ├─ db-creation.sql          # DDL: esquema completo
+  ├─ seed.sql                 # Datos de prueba iniciales
+  ├─ Comandos_SQL_PR_DB.sql   # Plantillas de operaciones CRUD
+  └─ README.md                # Esta documentación
 ```
 
-> Ubicá ambos archivos donde te resulte cómodo. En los ejemplos se asume `/sql`.
+> Base de datos: **`code_review_local`**
 
 ---
 
@@ -28,53 +31,83 @@ Los archivos principales son:
 
 **Linux/MacOS:**
 ```bash
-mysql -h <HOST> -u <USER> -p < /sql/db-creation.sql
+mysql -h <HOST> -u <USER> -p < db-creation.sql
 ```
 
 **Windows (PowerShell):**
 ```powershell
-Get-Content .\sql\db-creation.sql | mysql -h <HOST> -u <USER> -p
+Get-Content .\db-creation.sql | mysql -h <HOST> -u <USER> -p
 ```
 
 **Docker (cliente MySQL dentro de contenedor):**
 ```bash
-docker run --rm -i   --network host   -e MYSQL_PWD=<PASSWORD> mysql:8   mysql -h <HOST> -u <USER> < /sql/db-creation.sql
+docker run --rm -i --network host -e MYSQL_PWD=<PASSWORD> mysql:8 mysql -h <HOST> -u <USER> < db-creation.sql
 ```
 
-### 2) Ejecutar plantillas de inserción/consulta/borrado
+### 2) Cargar datos de prueba (seed)
 
-**Importar el archivo de plantillas (no cambia el esquema):**
+**Después de crear el esquema, cargá los datos de ejemplo:**
+
 ```bash
-mysql -h <HOST> -u <USER> -p < /sql/Comandos_SQL_PR_DB.sql
+mysql -h <HOST> -u <USER> -p code_review_local < seed.sql
 ```
 
-> El archivo incluye `USE proyecto_db;` y **consultas de ejemplo** con _placeholders_ como `<id_repo>`, `<id_pr>`, etc.  
-> ⚠️ **Reemplazá** esos placeholders por valores reales antes de ejecutar cada instrucción.
+Esto creará:
+- 4 usuarios de prueba (Developer, Tech Lead, QA, Admin)
+- 1 repositorio de ejemplo
+- 2 políticas de severidad versionadas
+- 1 endpoint mock para simular análisis
+- 1 análisis exitoso con findings y diff files
+- Métricas y estadísticas agregadas
+
+### 3) Ejecutar plantillas de inserción/consulta/borrado
+
+**Importar el archivo de plantillas (comandos de ejemplo con datos reales):**
+```bash
+mysql -h <HOST> -u <USER> -p code_review_local < Comandos_SQL_PR_DB.sql
+```
+
+> El archivo incluye `USE code_review_local;` y **consultas de ejemplo** con datos reales que coinciden con el seed.  
+> Podés ejecutarlo completo o copiar comandos individuales para tus pruebas.
 
 ---
 
-## 🧩 Variables y placeholders
+## 🧩 Datos de prueba incluidos
 
-En `Comandos_SQL_PR_DB.sql` vas a encontrar marcadores como:
+El archivo `seed.sql` proporciona un conjunto completo de datos de prueba que incluye:
 
-- `<id_usuario>`, `<id_repo>`, `<id_pr>`, `<id_politica>`, etc.
-- Fechas/horarios en formato `YYYY-MM-DD HH:MM:SS`.
+### Usuarios (4 usuarios con diferentes roles)
+- **Diego Soler** (`diego@crombie.dev`) - Developer
+- **Lucía Romero** (`lucia@crombie.dev`) - Tech Lead
+- **Mariano Funes** (`mariano@crombie.dev`) - QA
+- **Admin System** (`admin@crombie.dev`) - Admin
 
-Podés editarlos a mano o generar versiones parametrizadas para tu entorno CI/CD.
+### Análisis y datos relacionados
+- **1 repositorio**: `/Users/diego/projects/code-review-assistant`
+- **2 políticas de severidad** versionadas (v1 y v2)
+- **1 endpoint mock** configurado para simular respuestas de análisis
+- **1 análisis exitoso** (`run-001`) con:
+  - 3 archivos modificados (UserService.java, User.java, README.md)
+  - 4 findings de diferentes severidades:
+    - **CRITICAL**: Contraseña hardcodeada
+    - **HIGH**: Consulta SQL sin índice
+    - **MEDIUM**: Clase sin Javadoc
+    - **LOW**: Método con demasiadas líneas
 
-Ejemplo (Linux) para reemplazar **temporalmente** un PR:
-```bash
-sed "s/<id_pr>/42/g" /sql/Comandos_SQL_PR_DB.sql | mysql -h <HOST> -u <USER> -p
-```
+### Métricas y estadísticas
+- Estadísticas de usuario para los últimos 7 días
+- Snapshot de métricas globales del sistema
+- Vista de dashboard configurada para Tech Lead
 
 ---
 
 ## 🛠️ Notas técnicas
 
-- El DDL crea la BD `proyecto_db` y configura `utf8mb4_0900_ai_ci`.
+- El DDL crea la BD `code_review_local` y configura `utf8mb4_0900_ai_ci`.
 - Todas las FKs están ordenadas para evitar errores de dependencia.
-- Se usan `ENUM` para catálogos (p. ej., estados y niveles de riesgo).
+- Se usan tablas de catálogo (`user_role_type`, `run_status_type`, `file_change_type`, `severity_type`) para normalización.
 - Campos de auditoría/fechas emplean `CURRENT_TIMESTAMP`.
+- Las políticas de severidad se versionan y pueden tener fechas de vigencia diferentes.
 
 ---
 
@@ -82,17 +115,19 @@ sed "s/<id_pr>/42/g" /sql/Comandos_SQL_PR_DB.sql | mysql -h <HOST> -u <USER> -p
 
 1. **Esquema creado**  
    ```sql
-   SHOW DATABASES LIKE 'proyecto_db';
-   SHOW TABLES FROM proyecto_db;
+   SHOW DATABASES LIKE 'code_review_local';
+   SHOW TABLES FROM code_review_local;
    ```
-2. **Inserción básica**  
+2. **Datos de seed cargados**  
    ```sql
-   INSERT INTO usuario (nombre, email, rol, activo)
-   VALUES ('Admin', 'admin@example.com', 'ADMIN', TRUE);
+   SELECT COUNT(*) FROM users;  -- Debería retornar 4
+   SELECT COUNT(*) FROM findings; -- Debería retornar 4
    ```
-3. **Consulta de verificación**  
+3. **Consulta de verificación de análisis**  
    ```sql
-   SELECT id, nombre, email, rol FROM usuario LIMIT 5;
+   SELECT id, base_branch, target_branch, status_code 
+   FROM analysis_runs 
+   WHERE user_id='u-001';
    ```
 
 ---

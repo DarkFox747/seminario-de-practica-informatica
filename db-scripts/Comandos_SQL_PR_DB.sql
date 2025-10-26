@@ -1,295 +1,310 @@
 -- =========================================================
--- Comandos SQL (Plantillas) - Analizador de PR (MySQL 8)
--- Esquema asumido: proyecto_db
--- NOTA: Reemplace los <placeholders> por valores reales antes de ejecutar.
+-- Comandos SQL con datos reales - Asistente Local (MySQL 8)
+-- Esquema: code_review_local
 -- =========================================================
-USE proyecto_db;
+USE code_review_local;
 
--- =========================
--- Tabla: usuario
--- =========================
+-- (Opcional) Reinsertar catálogos por si no existen
+INSERT INTO user_role_type (code, description) VALUES
+  ('DEVELOPER','Desarrollador'),
+  ('TECH_LEAD','Líder Técnico'),
+  ('QA','Calidad'),
+  ('ADMIN','Administrador')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
+
+INSERT INTO run_status_type (code, description) VALUES
+  ('SUCCESS','Ejecución exitosa'),
+  ('ERROR','Ejecución con error'),
+  ('EMPTY_DIFF','Sin cambios para analizar')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
+
+INSERT INTO file_change_type (code, description) VALUES
+  ('ADDED','Archivo agregado'),
+  ('MODIFIED','Archivo modificado'),
+  ('DELETED','Archivo eliminado'),
+  ('RENAMED','Archivo renombrado')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
+
+INSERT INTO severity_type (code, description) VALUES
+  ('CRITICAL','Severidad crítica'),
+  ('HIGH','Severidad alta'),
+  ('MEDIUM','Severidad media'),
+  ('LOW','Severidad baja')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
+
+-- =========================================================
+-- users
+-- =========================================================
+-- INSERT (usuarios reales alineados a la seed)
+INSERT INTO users (id, name, email, role_code, active, created_at) VALUES
+('u-001','Diego Soler','diego@crombie.dev','DEVELOPER',1,NOW()),
+('u-002','Lucía Romero','lucia@crombie.dev','TECH_LEAD',1,NOW()),
+('u-003','Mariano Funes','mariano@crombie.dev','QA',1,NOW()),
+('u-004','Admin System','admin@crombie.dev','ADMIN',1,NOW())
+ON DUPLICATE KEY UPDATE name=VALUES(name), role_code=VALUES(role_code), active=VALUES(active);
+
+-- SELECT (todos / por email)
+SELECT id, name, email, role_code, active, created_at FROM users ORDER BY created_at DESC;
+SELECT id, name, role_code FROM users WHERE email='diego@crombie.dev';
+
+-- DELETE (ejemplo seguro: borra un usuario sin dependencias)
+DELETE FROM users WHERE id='u-004';
+
+-- =========================================================
+-- repositories
+-- =========================================================
 -- INSERT
-INSERT INTO usuario (nombre, email, rol, activo)
-VALUES ('Juan Perez', 'juan.perez@acme.com', 'ADMIN', TRUE);
+INSERT INTO repositories (id, local_path, vcs, created_at) VALUES
+('r-001','/Users/diego/projects/code-review-assistant','git',NOW())
+ON DUPLICATE KEY UPDATE local_path=VALUES(local_path);
+
 -- SELECT
-SELECT id, nombre, email, rol, activo, created_at
-FROM usuario
-WHERE id = <id_usuario>;
+SELECT * FROM repositories WHERE id='r-001';
+
 -- DELETE
-DELETE FROM usuario WHERE id = <id_usuario>;
+-- (Evitar borrar si hay analysis_runs que referencian; tendría FK)
+-- DELETE FROM repositories WHERE id='r-001';
 
--- =========================
--- Tabla: repo
--- =========================
+-- =========================================================
+-- severity_policies
+-- =========================================================
+-- INSERT v1 y v2 (versionadas)
+INSERT INTO severity_policies (id, name, rules_json, version, effective_from, created_at) VALUES
+('p-001','policy_v1',
+ '{
+   "security":"CRITICAL",
+   "performance":"HIGH",
+   "style":"LOW",
+   "maintainability":"MEDIUM"
+ }',1,CURDATE(),NOW())
+ON DUPLICATE KEY UPDATE name=VALUES(name), rules_json=VALUES(rules_json), version=VALUES(version);
+
+INSERT INTO severity_policies (id, name, rules_json, version, effective_from, created_at) VALUES
+('p-002','policy_v2',
+ '{
+   "security":"CRITICAL",
+   "performance":"HIGH",
+   "style":"LOW",
+   "maintainability":"LOW",
+   "observability":"MEDIUM"
+ }',2,CURDATE(),NOW())
+ON DUPLICATE KEY UPDATE name=VALUES(name), rules_json=VALUES(rules_json), version=VALUES(version);
+
+-- SELECT (última por fecha+versión)
+SELECT * FROM severity_policies ORDER BY effective_from DESC, version DESC LIMIT 1;
+
+-- DELETE (no recomendado si hay runs históricos)
+-- DELETE FROM severity_policies WHERE id='p-001';
+
+-- =========================================================
+-- endpoint_mocks
+-- =========================================================
 -- INSERT
-INSERT INTO repo (proveedor, nombre, slug, remoto_url, external_id, activo)
-VALUES ('GITHUB', 'acme/app', 'acme-app', 'https://github.com/acme/app', '123456', TRUE);
+INSERT INTO endpoint_mocks (id,name,version,spec,active,created_at) VALUES
+('e-001','Mock Local Endpoint','1.0.0',
+ '{
+   "request":{"diff":"string"},
+   "response":{"findings":[{"code":"SEC-001","severity":"CRITICAL"}]}
+ }',1,NOW())
+ON DUPLICATE KEY UPDATE name=VALUES(name), version=VALUES(version), active=VALUES(active);
+
 -- SELECT
-SELECT * FROM repo WHERE id = <id_repo>;
+SELECT id, name, version, active FROM endpoint_mocks;
+
 -- DELETE
-DELETE FROM repo WHERE id = <id_repo>;
+-- DELETE FROM endpoint_mocks WHERE id='e-001';
 
--- =========================
--- Tabla: politica
--- =========================
--- INSERT
-INSERT INTO politica (nombre, version, activa)
-VALUES ('Default', '1.0.0', TRUE);
--- SELECT
-SELECT * FROM politica WHERE id = <id_politica>;
--- DELETE
-DELETE FROM politica WHERE id = <id_politica>;
+-- =========================================================
+-- analysis_runs
+-- =========================================================
+-- INSERT corrida SUCCESS y EMPTY_DIFF
+INSERT INTO analysis_runs (
+  id, user_id, repo_id, policy_id, endpoint_id,
+  base_branch, target_branch, status_code, started_at, finished_at, duration_ms, created_at
+) VALUES
+('run-001','u-001','r-001','p-001','e-001','main','feature/refactor-service','SUCCESS',
+ NOW() - INTERVAL 15 SECOND, NOW(), 15000, NOW()),
+('run-002','u-001','r-001','p-001','e-001','main','feature/no-changes','EMPTY_DIFF',
+ NOW() - INTERVAL 5 MINUTE, NULL, NULL, NOW())
+ON DUPLICATE KEY UPDATE status_code=VALUES(status_code), finished_at=VALUES(finished_at), duration_ms=VALUES(duration_ms);
 
--- =========================
--- Tabla: plantilla_notificacion
--- =========================
--- INSERT
-INSERT INTO plantilla_notificacion (codigo, asunto_template, cuerpo_template, descripcion)
-VALUES ('ALERTA_RIESGO', 'Alerta: {{nivel}}', 'Se detectó riesgo {{nivel}} en PR {{pr}}', 'Template de alerta de riesgo');
--- SELECT
-SELECT * FROM plantilla_notificacion WHERE id = <id_plantilla>;
--- DELETE
-DELETE FROM plantilla_notificacion WHERE id = <id_plantilla>;
-
--- =========================
--- Tabla: reporte
--- =========================
--- INSERT
-INSERT INTO reporte (nombre, descripcion, formato, definicion_sql, activo, created_by)
-VALUES ('Resumen riesgos', 'Riesgos por PR', 'CSV', 'SELECT ...', TRUE, <id_usuario_autor>);
--- SELECT
-SELECT * FROM reporte WHERE id = <id_reporte>;
--- DELETE
-DELETE FROM reporte WHERE id = <id_reporte>;
-
--- =========================
--- Tabla: pull_request
--- =========================
--- INSERT
-INSERT INTO pull_request (repo_id, numero, titulo, autor_id, estado, base_sha, head_sha, link_url)
-VALUES (<id_repo>, 42, 'Fix login bug', <id_usuario_autor>, 'OPEN', 'abcdef123456...', '123456abcdef...', 'https://github.com/acme/app/pull/42');
--- SELECT
-SELECT * FROM pull_request WHERE repo_id = <id_repo> AND numero = <numero_pr>;
--- DELETE
-DELETE FROM pull_request WHERE id = <id_pr>;
-
--- =========================
--- Tabla: pr_commit
--- =========================
--- INSERT
-INSERT INTO pr_commit (pr_id, sha, parent_sha, autor_nombre, autor_email, authored_at, committed_at, mensaje, stats_add, stats_del, stats_files)
-VALUES (<id_pr>, '9c1c...abc', '7b2b...def', 'Juan', 'juan@acme.com', '2025-09-01 10:00:00', '2025-09-01 10:05:00', 'Refactor login', 120, 30, 5);
--- SELECT
-SELECT * FROM pr_commit WHERE pr_id = <id_pr> ORDER BY committed_at DESC;
--- DELETE
-DELETE FROM pr_commit WHERE id = <id_commit>;
-
--- =========================
--- Tabla: pr_file_change
--- =========================
--- INSERT
-INSERT INTO pr_file_change (pr_id, path, status, additions, deletions, changes, module, language, blob_id)
-VALUES (<id_pr>, 'src/auth/LoginService.java', 'modified', 25, 10, 35, 'auth', 'java', 'blob123');
--- SELECT
-SELECT path, status, additions, deletions, module
-FROM pr_file_change
-WHERE pr_id = <id_pr>;
--- DELETE
-DELETE FROM pr_file_change WHERE id = <id_change>;
-
--- =========================
--- Tabla: pr_status_history
--- =========================
--- INSERT
-INSERT INTO pr_status_history (pr_id, contexto, estado, descripcion, target_url)
-VALUES (<id_pr>, 'risk-check', 'success', 'Riesgo bajo', 'https://ci.example/job/123');
--- SELECT
-SELECT * FROM pr_status_history WHERE pr_id = <id_pr> ORDER BY created_at DESC;
--- DELETE
-DELETE FROM pr_status_history WHERE id = <id_status>;
-
--- =========================
--- Tabla: umbral
--- =========================
--- INSERT
-INSERT INTO umbral (politica_id, warn, block, max_tiempo_seg)
-VALUES (<id_politica>, 'MEDIO', 'ALTO', 300);
--- SELECT
-SELECT * FROM umbral WHERE politica_id = <id_politica>;
--- DELETE
-DELETE FROM umbral WHERE id = <id_umbral>;
-
--- =========================
--- Tabla: regla
--- =========================
--- INSERT
-INSERT INTO regla (politica_id, codigo, tipo, severidad, parametros_json, activa)
-VALUES (<id_politica>, 'DEP-001', 'DEPENDENCY', 'ALTO', '{"maxDepth":3}', TRUE);
--- SELECT
-SELECT * FROM regla WHERE politica_id = <id_politica> AND activa = TRUE;
--- DELETE
-DELETE FROM regla WHERE id = <id_regla>;
-
--- =========================
--- Tabla: modulo_critico
--- =========================
--- INSERT
-INSERT INTO modulo_critico (politica_id, patron)
-VALUES (<id_politica>, 'payments/*');
--- SELECT
-SELECT * FROM modulo_critico WHERE politica_id = <id_politica>;
--- DELETE
-DELETE FROM modulo_critico WHERE id = <id_modcritico>;
-
--- =========================
--- Tabla: ruta_sensible
--- =========================
--- INSERT
-INSERT INTO ruta_sensible (politica_id, patron)
-VALUES (<id_politica>, 'config/*.yml');
--- SELECT
-SELECT * FROM ruta_sensible WHERE politica_id = <id_politica>;
--- DELETE
-DELETE FROM ruta_sensible WHERE id = <id_ruta>;
-
--- =========================
--- Tabla: exclusion
--- =========================
--- INSERT
-INSERT INTO exclusion (politica_id, patron, motivo)
-VALUES (<id_politica>, 'docs/**', 'Cambios de documentación');
--- SELECT
-SELECT * FROM exclusion WHERE politica_id = <id_politica>;
--- DELETE
-DELETE FROM exclusion WHERE id = <id_exclusion>;
-
--- =========================
--- Tabla: analisis_pr
--- =========================
--- INSERT
-INSERT INTO analisis_pr (repo_id, pr_id, base_sha, head_sha, politica_id, politica_version, riesgo, puntaje, parcial, tiempo_ms, artefacto_json, artefacto_pdf, resumen)
-VALUES (<id_repo>, <id_pr>, 'abcdef', '123456', <id_politica>, '1.0.0', 'ALTO', 76.50, FALSE, 145000, 'storage/pr42.json', 'storage/pr42.pdf', 'Riesgos en auth y pagos');
--- SELECT
-SELECT id, riesgo, puntaje, parcial, tiempo_ms
-FROM analisis_pr
-WHERE pr_id = <id_pr>
-ORDER BY started_at DESC
-LIMIT 1;
--- DELETE
-DELETE FROM analisis_pr WHERE id = <id_analisis>;
-
--- =========================
--- Tabla: analisis_pr_impacto
--- =========================
--- INSERT
-INSERT INTO analisis_pr_impacto (analisis_id, categoria, severidad, archivo, modulo, evidencia_json)
-VALUES (<id_analisis>, 'DEPENDENCY', 'ALTO', 'src/auth/LoginService.java', 'auth', '{"reason":"import"}');
--- SELECT
-SELECT categoria, severidad, archivo, modulo
-FROM analisis_pr_impacto
-WHERE analisis_id = <id_analisis>;
--- DELETE
-DELETE FROM analisis_pr_impacto WHERE id = <id_impacto>;
-
--- =========================
--- Tabla: analisis_pr_modulo
--- =========================
--- INSERT
-INSERT INTO analisis_pr_modulo (analisis_id, modulo, razon, evidencia_json)
-VALUES (<id_analisis>, 'payments', 'contract', '{"iface":"PaymentGateway"}');
--- SELECT
-SELECT modulo, razon
-FROM analisis_pr_modulo
-WHERE analisis_id = <id_analisis>;
--- DELETE
-DELETE FROM analisis_pr_modulo WHERE id = <id_modulo>;
-
--- =========================
--- Tabla: silenciamiento_pr
--- =========================
--- INSERT
-INSERT INTO silenciamiento_pr (repo_id, pr_number, hasta, motivo)
-VALUES (<id_repo>, 42, '2025-12-31 23:59:59', 'Silencio temporal por investigación');
--- SELECT
-SELECT * FROM silenciamiento_pr WHERE repo_id = <id_repo> AND pr_number = <num_pr>;
--- DELETE
-DELETE FROM silenciamiento_pr WHERE repo_id = <id_repo> AND pr_number = <num_pr>;
-
--- =========================
--- Tabla: notificacion
--- =========================
--- INSERT
-INSERT INTO notificacion (canal, asunto, cuerpo, usuario_id, relacionada_tipo, relacionada_id, estado)
-VALUES ('CLI', 'Riesgo Alto en PR #42', 'Resumen: ...', <id_usuario>, 'PR', <id_pr>, 'PENDIENTE');
--- SELECT
-SELECT * FROM notificacion
-WHERE relacionada_tipo = 'PR' AND relacionada_id = <id_pr>
-ORDER BY created_at DESC;
--- DELETE
-DELETE FROM notificacion WHERE id = <id_notif>;
-
--- =========================
--- Tabla: reporte_filtro
--- =========================
--- INSERT
-INSERT INTO reporte_filtro (reporte_id, nombre, tipo, valor_default, requerido)
-VALUES (<id_reporte>, 'fecha_desde', 'date', NULL, TRUE);
--- SELECT
-SELECT * FROM reporte_filtro WHERE reporte_id = <id_reporte>;
--- DELETE
-DELETE FROM reporte_filtro WHERE id = <id_rep_filtro>;
-
--- =========================
--- Tabla: reporte_programacion
--- =========================
--- INSERT
-INSERT INTO reporte_programacion (reporte_id, cron_expr, activo)
-VALUES (<id_reporte>, '0 7 * * *', TRUE);
--- SELECT
-SELECT * FROM reporte_programacion WHERE reporte_id = <id_reporte>;
--- DELETE
-DELETE FROM reporte_programacion WHERE id = <id_rep_prog>;
-
--- =========================
--- Tabla: reporte_ejecucion
--- =========================
--- INSERT
-INSERT INTO reporte_ejecucion (reporte_id, ejecutado_por, estado, parametros_json, resultado_path)
-VALUES (<id_reporte>, <id_usuario>, 'PENDIENTE', '{"fecha_desde":"2025-10-01"}', 'storage/rep-001.csv');
--- SELECT
-SELECT estado, resultado_path, started_at, ended_at
-FROM reporte_ejecucion
-WHERE reporte_id = <id_reporte>
+-- SELECT (historial por usuario)
+SELECT id, base_branch, target_branch, status_code, started_at, finished_at, duration_ms
+FROM analysis_runs
+WHERE user_id='u-001'
 ORDER BY started_at DESC;
--- DELETE
-DELETE FROM reporte_ejecucion WHERE id = <id_rep_ejec>;
 
--- =========================
--- Tabla: auditoria
--- =========================
--- INSERT
-INSERT INTO auditoria (entidad_tipo, entidad_id, accion, actor_id, detalle_json)
-VALUES ('PR', <id_pr>, 'STATUS', <id_usuario>, '{"from":"warning","to":"failure"}');
+-- DELETE (cascadeará diff_files y findings)
+-- DELETE FROM analysis_runs WHERE id='run-002';
+
+-- =========================================================
+-- diff_files
+-- =========================================================
+-- INSERT (asociados a run-001)
+INSERT INTO diff_files (id, run_id, path, change_type_code, additions, deletions) VALUES
+('d-001','run-001','src/service/UserService.java','MODIFIED',25,4),
+('d-002','run-001','src/model/User.java','ADDED',42,0),
+('d-003','run-001','README.md','MODIFIED',5,1)
+ON DUPLICATE KEY UPDATE additions=VALUES(additions), deletions=VALUES(deletions);
+
+-- SELECT (por corrida)
+SELECT path, change_type_code, additions, deletions
+FROM diff_files
+WHERE run_id='run-001'
+ORDER BY path;
+
+-- DELETE
+-- DELETE FROM diff_files WHERE id='d-003';
+
+-- =========================================================
+-- findings
+-- =========================================================
+-- INSERT (hallazgos del mock)
+INSERT INTO findings (
+  id, run_id, code, title, description, severity_code,
+  file_path, line_start, line_end, category, created_at
+) VALUES
+('f-001','run-001','SEC-001','Uso de contraseña hardcodeada',
+ 'Se detectó una cadena sensible en la clase UserService','CRITICAL',
+ 'src/service/UserService.java',120,125,'security',NOW()),
+('f-002','run-001','PERF-002','Consulta SQL sin índice',
+ 'Posible impacto en rendimiento: consulta sin índice','HIGH',
+ 'src/service/UserService.java',210,215,'performance',NOW()),
+('f-003','run-001','STYLE-005','Método con demasiadas líneas',
+ 'Refactor sugerido para legibilidad','LOW',
+ 'src/service/UserService.java',40,90,'style',NOW()),
+('f-004','run-001','MAIN-010','Clase sin comentarios Javadoc',
+ 'Agregar documentación de clase','MEDIUM',
+ 'src/model/User.java',1,10,'maintainability',NOW())
+ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), severity_code=VALUES(severity_code);
+
+-- SELECT (detalle y resumen por severidad)
+SELECT code, title, severity_code, file_path, line_start, line_end, category
+FROM findings
+WHERE run_id='run-001'
+ORDER BY FIELD(severity_code,'CRITICAL','HIGH','MEDIUM','LOW'), file_path;
+
+SELECT severity_code, COUNT(*) AS qty
+FROM findings
+WHERE run_id='run-001'
+GROUP BY severity_code;
+
+-- DELETE
+-- DELETE FROM findings WHERE id='f-004';
+
+-- =========================================================
+-- user_stats
+-- =========================================================
+-- INSERT (semana actual para Diego)
+INSERT INTO user_stats (
+  id, user_id, period_start, period_end,
+  analyses_count, findings_count, critical_count, high_count, medium_count, low_count, created_at
+) VALUES (
+  'us-001','u-001', DATE_SUB(CURDATE(), INTERVAL 7 DAY), CURDATE(),
+  3,12,2,3,4,3,NOW()
+)
+ON DUPLICATE KEY UPDATE analyses_count=VALUES(analyses_count),
+                        findings_count=VALUES(findings_count),
+                        critical_count=VALUES(critical_count),
+                        high_count=VALUES(high_count),
+                        medium_count=VALUES(medium_count),
+                        low_count=VALUES(low_count);
+
 -- SELECT
-SELECT * FROM auditoria
-WHERE entidad_tipo = 'PR' AND entidad_id = <id_pr>
-ORDER BY creado_en DESC;
--- DELETE
-DELETE FROM auditoria WHERE id = <id_audit>;
+SELECT * FROM user_stats WHERE user_id='u-001' ORDER BY period_start DESC;
 
--- =========================
--- Tabla: metric_event
--- =========================
--- INSERT
-INSERT INTO metric_event (name, valor, dimensiones_json, trace_id)
-VALUES ('t_analisis_ms', 145000, '{"repo":"acme/app","pr":42}', 'trace-xyz');
+-- DELETE
+-- DELETE FROM user_stats WHERE id='us-001';
+
+-- =========================================================
+-- metrics_snapshots
+-- =========================================================
+-- INSERT (agregado semanal)
+INSERT INTO metrics_snapshots (
+  id, period_start, period_end,
+  total_analyses, total_findings,
+  critical_count, high_count, medium_count, low_count,
+  avg_severity_score, created_at
+) VALUES (
+  'ms-001', DATE_SUB(CURDATE(), INTERVAL 7 DAY), CURDATE(),
+  10,40,6,10,12,12,2.75,NOW()
+)
+ON DUPLICATE KEY UPDATE total_analyses=VALUES(total_analyses),
+                        total_findings=VALUES(total_findings),
+                        critical_count=VALUES(critical_count),
+                        high_count=VALUES(high_count),
+                        medium_count=VALUES(medium_count),
+                        low_count=VALUES(low_count),
+                        avg_severity_score=VALUES(avg_severity_score);
+
 -- SELECT
-SELECT * FROM metric_event
-WHERE name = 't_analisis_ms' AND ts >= '2025-10-01'
-ORDER BY ts DESC;
--- DELETE
-DELETE FROM metric_event WHERE id = <id_metric>;
+SELECT * FROM metrics_snapshots ORDER BY period_start DESC;
 
--- =========================
--- FIN DEL ARCHIVO
--- =========================
+-- DELETE
+-- DELETE FROM metrics_snapshots WHERE id='ms-001';
+
+-- =========================================================
+-- dashboard_views
+-- =========================================================
+-- INSERT (preferencias del TL Lucía)
+INSERT INTO dashboard_views (id, owner_user_id, filters_json, created_at) VALUES
+('dash-001','u-002','{"period":"last7days","severity":["CRITICAL","HIGH"]}',NOW())
+ON DUPLICATE KEY UPDATE filters_json=VALUES(filters_json);
+
+-- SELECT
+SELECT id, owner_user_id, created_at, filters_json
+FROM dashboard_views
+WHERE owner_user_id='u-002'
+ORDER BY created_at DESC;
+
+-- DELETE
+-- DELETE FROM dashboard_views WHERE id='dash-001';
+
+-- =========================================================
+-- Consultas útiles (reales)
+-- =========================================================
+
+-- Historial por usuario con resumen de severidades
+SELECT r.id AS run_id, r.base_branch, r.target_branch, r.status_code,
+       r.started_at, r.duration_ms,
+       SUM(CASE WHEN f.severity_code='CRITICAL' THEN 1 ELSE 0 END) AS crit,
+       SUM(CASE WHEN f.severity_code='HIGH'     THEN 1 ELSE 0 END) AS high_,
+       SUM(CASE WHEN f.severity_code='MEDIUM'   THEN 1 ELSE 0 END) AS med,
+       SUM(CASE WHEN f.severity_code='LOW'      THEN 1 ELSE 0 END) AS low_
+FROM analysis_runs r
+LEFT JOIN findings f ON f.run_id = r.id
+WHERE r.user_id = 'u-001'
+GROUP BY r.id, r.base_branch, r.target_branch, r.status_code, r.started_at, r.duration_ms
+ORDER BY r.started_at DESC;
+
+-- Top 5 usuarios por findings CRITICAL últimos 30 días
+SELECT u.id, u.name, COUNT(*) AS critical_findings
+FROM users u
+JOIN analysis_runs r ON r.user_id = u.id
+JOIN findings f ON f.run_id = r.id
+WHERE f.severity_code = 'CRITICAL'
+  AND r.started_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+GROUP BY u.id, u.name
+ORDER BY critical_findings DESC
+LIMIT 5;
+
+-- Distribución de severidades últimos 14 días
+SELECT f.severity_code, COUNT(*) AS qty
+FROM findings f
+JOIN analysis_runs r ON r.id = f.run_id
+WHERE r.started_at BETWEEN DATE_SUB(CURDATE(), INTERVAL 14 DAY) AND NOW()
+GROUP BY f.severity_code
+ORDER BY FIELD(f.severity_code,'CRITICAL','HIGH','MEDIUM','LOW');
+
+-- Archivos más señalados (top 10) últimos 14 días
+SELECT f.file_path, COUNT(*) AS hits
+FROM findings f
+JOIN analysis_runs r ON r.id = f.run_id
+WHERE r.started_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+GROUP BY f.file_path
+ORDER BY hits DESC
+LIMIT 10;
+
+-- Limpieza segura de la corrida run-001 (ejemplo)
+-- (Elimina findings y diff por ON DELETE CASCADE, luego el run)
+-- DELETE FROM analysis_runs WHERE id='run-001';
