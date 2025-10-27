@@ -115,6 +115,10 @@ public class AppFactory {
         return exportService;
     }
     
+    public DiffEngine getDiffEngine() {
+        return diffEngine;
+    }
+    
     public UserRepository getUserRepository() {
         return userRepository;
     }

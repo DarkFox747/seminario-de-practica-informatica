@@ -1,0 +1,74 @@
+[
+  {
+    "ruleId": "SEC015",
+    "category": "Security",
+    "message": "Deserialization of untrusted data",
+    "severity": "CRITICAL",
+    "lineNumber": 201,
+    "codeSnippet": "ObjectInputStream ois = new ObjectInputStream(input);",
+    "suggestion": "Validate and sanitize input before deserializing"
+  },
+  {
+    "ruleId": "SEC016",
+    "category": "Security",
+    "message": "Missing input validation",
+    "severity": "HIGH",
+    "lineNumber": 73,
+    "codeSnippet": "String userInput = request.getParameter(\"data\");",
+    "suggestion": "Always validate and sanitize user input"
+  },
+  {
+    "ruleId": "CODE020",
+    "category": "Code Quality",
+    "message": "Method has too many parameters",
+    "severity": "MEDIUM",
+    "lineNumber": 45,
+    "codeSnippet": "public void process(String a, int b, boolean c, List d, Map e, Object f) { ... }",
+    "suggestion": "Consider using a parameter object or builder pattern"
+  },
+  {
+    "ruleId": "CODE021",
+    "category": "Code Quality",
+    "message": "Deep nesting detected",
+    "severity": "MEDIUM",
+    "lineNumber": 112,
+    "codeSnippet": "if (...) { if (...) { if (...) { if (...) { ... } } } }",
+    "suggestion": "Reduce nesting depth by extracting methods or using guard clauses"
+  },
+  {
+    "ruleId": "PERF022",
+    "category": "Performance",
+    "message": "Potential memory leak - unclosed resource",
+    "severity": "HIGH",
+    "lineNumber": 88,
+    "codeSnippet": "FileInputStream fis = new FileInputStream(file);",
+    "suggestion": "Use try-with-resources to ensure proper resource cleanup"
+  },
+  {
+    "ruleId": "STYLE023",
+    "category": "Style",
+    "message": "Inconsistent indentation",
+    "severity": "LOW",
+    "lineNumber": 156,
+    "codeSnippet": "  if (valid) {\n      process();\n  }",
+    "suggestion": "Use consistent indentation throughout the file"
+  },
+  {
+    "ruleId": "INFO024",
+    "category": "Documentation",
+    "message": "Deprecated API usage",
+    "severity": "INFO",
+    "lineNumber": 34,
+    "codeSnippet": "@Deprecated public void oldMethod() { ... }",
+    "suggestion": "Consider migrating to newer API alternatives"
+  },
+  {
+    "ruleId": "CODE025",
+    "category": "Code Quality",
+    "message": "Null pointer dereference risk",
+    "severity": "HIGH",
+    "lineNumber": 178,
+    "codeSnippet": "user.getName().toLowerCase();",
+    "suggestion": "Add null checks before dereferencing objects"
+  }
+]

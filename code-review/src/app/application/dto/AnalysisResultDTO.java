@@ -155,10 +155,10 @@ public class AnalysisResultDTO {
     }
     
     public boolean hasErrors() {
-        return status == RunStatus.FAILED && errorMessage != null;
+        return status == RunStatus.ERROR && errorMessage != null;
     }
     
     public boolean isSuccess() {
-        return status == RunStatus.COMPLETED;
+        return status == RunStatus.SUCCESS;
     }
 }

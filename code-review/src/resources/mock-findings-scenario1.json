@@ -1,0 +1,65 @@
+[
+  {
+    "ruleId": "SEC001",
+    "category": "Security",
+    "message": "Potential SQL injection vulnerability detected",
+    "severity": "CRITICAL",
+    "lineNumber": 42,
+    "codeSnippet": "String sql = \"SELECT * FROM users WHERE id = \" + userId;",
+    "suggestion": "Use PreparedStatement instead of string concatenation"
+  },
+  {
+    "ruleId": "SEC002",
+    "category": "Security",
+    "message": "Hardcoded password found",
+    "severity": "CRITICAL",
+    "lineNumber": 18,
+    "codeSnippet": "String password = \"admin123\";",
+    "suggestion": "Store sensitive credentials in environment variables or secure vault"
+  },
+  {
+    "ruleId": "CODE002",
+    "category": "Code Quality",
+    "message": "Method complexity exceeds threshold",
+    "severity": "HIGH",
+    "lineNumber": 78,
+    "codeSnippet": "public void processData() { ... }",
+    "suggestion": "Consider breaking down this method into smaller functions"
+  },
+  {
+    "ruleId": "CODE005",
+    "category": "Code Quality",
+    "message": "Duplicated code block detected",
+    "severity": "MEDIUM",
+    "lineNumber": 120,
+    "codeSnippet": "if (user != null) { validate(user); }",
+    "suggestion": "Extract common logic into a reusable method"
+  },
+  {
+    "ruleId": "STYLE004",
+    "category": "Style",
+    "message": "Variable naming does not follow conventions",
+    "severity": "LOW",
+    "lineNumber": 15,
+    "codeSnippet": "String MyVariable = \"test\";",
+    "suggestion": "Use camelCase for variable names: myVariable"
+  },
+  {
+    "ruleId": "INFO005",
+    "category": "Documentation",
+    "message": "Missing Javadoc for public method",
+    "severity": "INFO",
+    "lineNumber": 32,
+    "codeSnippet": "public void calculate() { ... }",
+    "suggestion": "Add Javadoc to document method purpose and parameters"
+  },
+  {
+    "ruleId": "INFO006",
+    "category": "Documentation",
+    "message": "TODO comment found",
+    "severity": "INFO",
+    "lineNumber": 88,
+    "codeSnippet": "// TODO: implement error handling",
+    "suggestion": "Address pending TODO items before production release"
+  }
+]

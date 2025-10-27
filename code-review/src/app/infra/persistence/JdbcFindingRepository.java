@@ -32,31 +32,38 @@ public class JdbcFindingRepository implements FindingRepository {
     }
     
     private Finding insert(Finding finding) throws RepositoryException {
-        String sql = "INSERT INTO findings (analysis_run_id, diff_file_id, rule_id, category, " +
-                     "message, severity_raw, severity_final, line_number, code_snippet, suggestion) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO findings (run_id, code, title, description, " +
+                     "severity_code, file_path, line_start, line_end, category, created_at) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+            
+            // Get file_path from diff_file using diff_file_id
+            String filePath = getFilePathFromDiffFile(finding.getDiffFileId());
+            
+            // Map severity to DB-compatible value (INFO -> LOW since INFO not in severity_type)
+            String severityCode = mapSeverityToDbCode(finding.getSeverityFinal());
             
             stmt.setLong(1, finding.getAnalysisRunId());
-            setLong(stmt, 2, finding.getDiffFileId());
-            stmt.setString(3, finding.getRuleId());
-            stmt.setString(4, finding.getCategory());
-            stmt.setString(5, finding.getMessage());
-            stmt.setString(6, finding.getSeverityRaw().name());
-            stmt.setString(7, finding.getSeverityFinal().name());
-            setInteger(stmt, 8, finding.getLineNumber());
-            stmt.setString(9, finding.getCodeSnippet());
-            stmt.setString(10, finding.getSuggestion());
+            stmt.setString(2, finding.getRuleId()); // code
+            stmt.setString(3, finding.getMessage()); // title
+            stmt.setString(4, finding.getMessage()); // description (same as title for now)
+            stmt.setString(5, severityCode); // severity_code
+            stmt.setString(6, filePath); // file_path
+            setInteger(stmt, 7, finding.getLineNumber()); // line_start
+            setInteger(stmt, 8, finding.getLineNumber()); // line_end
+            stmt.setString(9, finding.getCategory()); // category
             
             stmt.executeUpdate();
             
-            try (ResultSet rs = stmt.getGeneratedKeys()) {
-                if (rs.next()) {
-                    finding.setId(rs.getLong(1));
-                }
+            ResultSet rs = stmt.getGeneratedKeys();
+            if (rs.next()) {
+                finding.setId(rs.getLong(1));
             }
+            rs.close();
+            stmt.close();
             
             return finding;
         } catch (Exception e) {
@@ -64,25 +71,48 @@ public class JdbcFindingRepository implements FindingRepository {
         }
     }
     
+    private String getFilePathFromDiffFile(Long diffFileId) throws RepositoryException {
+        if (diffFileId == null) {
+            return "unknown";
+        }
+        String sql = "SELECT path FROM diff_files WHERE id = ?";
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setLong(1, diffFileId);
+            ResultSet rs = stmt.executeQuery();
+            String path = rs.next() ? rs.getString("path") : "unknown";
+            rs.close();
+            stmt.close();
+            return path;
+        } catch (Exception e) {
+            throw new RepositoryException("Failed to get file path from diff_file", e);
+        }
+    }
+    
     private Finding update(Finding finding) throws RepositoryException {
-        String sql = "UPDATE findings SET rule_id = ?, category = ?, message = ?, " +
-                     "severity_raw = ?, severity_final = ?, line_number = ?, " +
-                     "code_snippet = ?, suggestion = ? WHERE id = ?";
+        String sql = "UPDATE findings SET code = ?, category = ?, title = ?, " +
+                     "description = ?, severity_code = ?, line_start = ?, " +
+                     "line_end = ? WHERE id = ?";
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
             
-            stmt.setString(1, finding.getRuleId());
+            // Map severity to DB-compatible value
+            String severityCode = mapSeverityToDbCode(finding.getSeverityFinal());
+            
+            stmt.setString(1, finding.getRuleId()); // code
             stmt.setString(2, finding.getCategory());
-            stmt.setString(3, finding.getMessage());
-            stmt.setString(4, finding.getSeverityRaw().name());
-            stmt.setString(5, finding.getSeverityFinal().name());
-            setInteger(stmt, 6, finding.getLineNumber());
-            stmt.setString(7, finding.getCodeSnippet());
-            stmt.setString(8, finding.getSuggestion());
-            stmt.setLong(9, finding.getId());
+            stmt.setString(3, finding.getMessage()); // title
+            stmt.setString(4, finding.getMessage()); // description
+            stmt.setString(5, severityCode); // severity_code
+            setInteger(stmt, 6, finding.getLineNumber()); // line_start
+            setInteger(stmt, 7, finding.getLineNumber()); // line_end
+            stmt.setLong(8, finding.getId());
             
             stmt.executeUpdate();
+            stmt.close();
             return finding;
         } catch (Exception e) {
             throw new RepositoryException("Failed to update finding", e);
@@ -93,17 +123,22 @@ public class JdbcFindingRepository implements FindingRepository {
     public Optional<Finding> findById(Long id) throws RepositoryException {
         String sql = "SELECT * FROM findings WHERE id = ?";
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
             
             stmt.setLong(1, id);
             
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return Optional.of(mapRow(rs));
-                }
-                return Optional.empty();
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                Finding finding = mapRow(rs);
+                rs.close();
+                stmt.close();
+                return Optional.of(finding);
             }
+            rs.close();
+            stmt.close();
+            return Optional.empty();
         } catch (Exception e) {
             throw new RepositoryException("Failed to find finding by id", e);
         }
@@ -111,20 +146,22 @@ public class JdbcFindingRepository implements FindingRepository {
     
     @Override
     public List<Finding> findByAnalysisRunId(Long analysisRunId) throws RepositoryException {
-        String sql = "SELECT * FROM findings WHERE analysis_run_id = ? " +
-                     "ORDER BY severity_final, file_path, line_number";
+        String sql = "SELECT * FROM findings WHERE run_id = ? " +
+                     "ORDER BY severity_code, file_path, line_start";
         List<Finding> findings = new ArrayList<>();
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
             
             stmt.setLong(1, analysisRunId);
             
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    findings.add(mapRow(rs));
-                }
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                findings.add(mapRow(rs));
             }
+            rs.close();
+            stmt.close();
             return findings;
         } catch (Exception e) {
             throw new RepositoryException("Failed to find findings by run", e);
@@ -133,23 +170,9 @@ public class JdbcFindingRepository implements FindingRepository {
     
     @Override
     public List<Finding> findByDiffFileId(Long diffFileId) throws RepositoryException {
-        String sql = "SELECT * FROM findings WHERE diff_file_id = ? ORDER BY line_number";
-        List<Finding> findings = new ArrayList<>();
-        
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            
-            stmt.setLong(1, diffFileId);
-            
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    findings.add(mapRow(rs));
-                }
-            }
-            return findings;
-        } catch (Exception e) {
-            throw new RepositoryException("Failed to find findings by file", e);
-        }
+        // NOTE: DB schema doesn't have diff_file_id, only file_path
+        // This method needs to query by file_path instead
+        throw new UnsupportedOperationException("findByDiffFileId not supported with current schema");
     }
     
     @Override
@@ -193,17 +216,26 @@ public class JdbcFindingRepository implements FindingRepository {
     private Finding mapRow(ResultSet rs) throws SQLException {
         Finding finding = new Finding();
         finding.setId(rs.getLong("id"));
-        finding.setAnalysisRunId(rs.getLong("analysis_run_id"));
-        finding.setDiffFileId(getLong(rs, "diff_file_id"));
-        finding.setRuleId(rs.getString("rule_id"));
+        finding.setAnalysisRunId(rs.getLong("run_id"));
+        finding.setRuleId(rs.getString("code"));
         finding.setCategory(rs.getString("category"));
-        finding.setMessage(rs.getString("message"));
-        finding.setSeverityRaw(Severity.valueOf(rs.getString("severity_raw")));
-        finding.setSeverityFinal(Severity.valueOf(rs.getString("severity_final")));
-        finding.setLineNumber(getInteger(rs, "line_number"));
-        finding.setCodeSnippet(rs.getString("code_snippet"));
-        finding.setSuggestion(rs.getString("suggestion"));
+        finding.setMessage(rs.getString("title")); // or "description"
+        finding.setSeverityRaw(Severity.valueOf(rs.getString("severity_code")));
+        finding.setSeverityFinal(Severity.valueOf(rs.getString("severity_code")));
+        finding.setLineNumber(getInteger(rs, "line_start"));
+        // Note: DB doesn't store diff_file_id, code_snippet, suggestion
         return finding;
+    }
+    
+    /**
+     * Maps Severity enum to DB severity_type code.
+     * INFO is mapped to LOW since it doesn't exist in severity_type table.
+     */
+    private String mapSeverityToDbCode(Severity severity) {
+        if (severity == Severity.INFO) {
+            return "LOW";
+        }
+        return severity.name();
     }
     
     private void setInteger(PreparedStatement stmt, int index, Integer value) throws SQLException {

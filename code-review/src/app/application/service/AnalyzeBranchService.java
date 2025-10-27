@@ -5,6 +5,7 @@ import app.application.dto.AnalysisResultDTO;
 import app.domain.entity.*;
 import app.domain.port.*;
 import app.domain.value.Severity;
+import app.infra.integration.EndpointMockClient;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -56,34 +57,47 @@ public class AnalyzeBranchService {
         AnalysisRun run = null;
         
         try {
-            // Step 1: Create and persist analysis run
-            txManager.begin();
+            System.out.println("[AnalyzeBranchService] Starting analysis for: " + request.getRepositoryPath());
+            
+            // Step 1: Get or create repository
+            System.out.println("[AnalyzeBranchService] Getting/creating repository...");
+            RepositoryRef repository = getOrCreateRepository(request);
+            System.out.println("[AnalyzeBranchService] Repository ready: " + repository.getName());
+            
+            // Step 2: Create and persist analysis run (with SUCCESS status, will change to ERROR if fails)
+            System.out.println("[AnalyzeBranchService] Creating analysis run...");
             run = createAnalysisRun(request);
-            run.markAsRunning();
+            run.setRepositoryId(repository.getId());
+            run.setPolicyId(1L); // Use default policy
+            run.setEndpointId(1L); // Use default endpoint
+            
+            txManager.begin();
             run = analysisRunRepo.save(run);
             txManager.commit();
             
-            // Step 2: Get repository path
-            RepositoryRef repository = getRepository(request.getRepositoryId());
-            String repoPath = repository.getLocalPath();
+            System.out.println("[AnalyzeBranchService] Analysis run created with ID: " + run.getId());
             
             // Step 3: Calculate diff
+            String repoPath = repository.getLocalPath();
             List<DiffFile> diffFiles = diffEngine.calculateDiff(
                 repoPath, 
                 request.getBaseBranch(), 
                 request.getTargetBranch()
             );
             
+            System.out.println("[AnalyzeBranchService] Diff calculated: " + diffFiles.size() + " files changed");
+            
             if (diffFiles.isEmpty()) {
                 return handleEmptyDiff(run);
             }
             
-            // Step 4: Load active policy
+            // Step 4: Process each file
+            txManager.begin();
+            
+            // Load active policy (inside transaction)
             SeverityPolicy activePolicy = policyRepo.findActivePolicy()
                 .orElse(null);
             
-            // Step 5: Process each file
-            txManager.begin();
             Map<Severity, Integer> severityCounts = new HashMap<>();
             initializeSeverityCounts(severityCounts);
             
@@ -100,6 +114,8 @@ public class AnalyzeBranchService {
                     diffFile.getFilePath(), 
                     fileContent
                 );
+                
+                System.out.println("[AnalyzeBranchService] File " + diffFile.getFilePath() + " returned " + findings.size() + " findings");
                 
                 // Apply policy and persist findings
                 for (Finding finding : findings) {
@@ -120,6 +136,8 @@ public class AnalyzeBranchService {
                 }
             }
             
+            System.out.println("[AnalyzeBranchService] Total findings: " + totalFindings);
+            
             // Step 6: Update run with results
             run.setTotalFiles(diffFiles.size());
             run.setTotalFindings(totalFindings);
@@ -136,11 +154,22 @@ public class AnalyzeBranchService {
             // Step 7: Update repository last analyzed timestamp
             updateRepositoryTimestamp(repository);
             
+            // Step 8: Rotate to next mock scenario for next analysis
+            rotateMockScenario();
+            
             return mapToResultDTO(run);
             
         } catch (Exception e) {
-            handleError(run, e);
-            return mapToResultDTO(run);
+            System.err.println("[AnalyzeBranchService] ERROR: " + e.getMessage());
+            e.printStackTrace();
+            
+            if (run != null) {
+                handleError(run, e);
+                return mapToResultDTO(run);
+            } else {
+                // Run was never created, return error DTO
+                throw new RuntimeException("Analysis failed: " + e.getMessage(), e);
+            }
         }
     }
     
@@ -174,10 +203,46 @@ public class AnalyzeBranchService {
         }
     }
     
+    /**
+     * Get or create repository based on local path from request.
+     */
+    private RepositoryRef getOrCreateRepository(AnalysisRequestDTO request) throws Exception {
+        String repoPath = request.getRepositoryPath();
+        if (repoPath == null || repoPath.trim().isEmpty()) {
+            throw new Exception("Repository path is required");
+        }
+        
+        txManager.begin();
+        try {
+            // For now, just create a temporary repository object
+            // In production, you'd search by path and reuse existing ones
+            String repoName = extractRepoName(repoPath);
+            RepositoryRef newRepo = new RepositoryRef(null, repoName, repoPath);
+            newRepo = repositoryRepo.save(newRepo);
+            txManager.commit();
+            
+            System.out.println("[AnalyzeBranchService] Created repository: " + repoName + " (ID: " + newRepo.getId() + ")");
+            return newRepo;
+            
+        } catch (Exception e) {
+            txManager.rollback();
+            throw e;
+        }
+    }
+    
+    /**
+     * Extract repository name from path.
+     */
+    private String extractRepoName(String path) {
+        String normalized = path.replace("\\", "/");
+        String[] parts = normalized.split("/");
+        return parts[parts.length - 1];
+    }
+    
     private AnalysisResultDTO handleEmptyDiff(AnalysisRun run) {
         try {
             txManager.begin();
-            run.markAsFailed("No changes detected between branches");
+            run.markAsEmptyDiff();
             run.setTotalFiles(0);
             run.setTotalFindings(0);
             analysisRunRepo.save(run);
@@ -253,6 +318,15 @@ public class AnalyzeBranchService {
         counts.put(Severity.INFO, 0);
     }
     
+    /**
+     * Rotate mock scenario if using EndpointMockClient.
+     */
+    private void rotateMockScenario() {
+        if (endpointClient instanceof EndpointMockClient) {
+            ((EndpointMockClient) endpointClient).rotateScenario();
+        }
+    }
+    
     private AnalysisResultDTO mapToResultDTO(AnalysisRun run) {
         AnalysisResultDTO dto = new AnalysisResultDTO();
         dto.setAnalysisRunId(run.getId());
@@ -268,6 +342,24 @@ public class AnalyzeBranchService {
         dto.setLowCount(run.getLowCount());
         dto.setInfoCount(run.getInfoCount());
         dto.setErrorMessage(run.getErrorMessage());
+        
+        // Load findings and diff files from database
+        try {
+            txManager.begin();
+            List<Finding> findings = findingRepo.findByAnalysisRunId(run.getId());
+            List<DiffFile> diffFiles = diffFileRepo.findByAnalysisRunId(run.getId());
+            dto.setFindings(findings);
+            dto.setDiffFiles(diffFiles);
+            txManager.commit();
+        } catch (Exception e) {
+            System.err.println("[AnalyzeBranchService] Warning: Could not load findings/files: " + e.getMessage());
+            try {
+                txManager.rollback();
+            } catch (TxException rollbackEx) {
+                // Ignore
+            }
+        }
+        
         return dto;
     }
 }

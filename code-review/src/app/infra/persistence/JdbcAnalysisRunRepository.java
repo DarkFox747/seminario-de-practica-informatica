@@ -33,14 +33,15 @@ public class JdbcAnalysisRunRepository implements AnalysisRunRepository {
     }
     
     private AnalysisRun insert(AnalysisRun run) throws RepositoryException {
-        String sql = "INSERT INTO analysis_runs (user_id, repository_id, base_branch, target_branch, " +
-                     "status, started_at, completed_at, total_files, total_findings, " +
+        String sql = "INSERT INTO analysis_runs (user_id, repo_id, base_branch, target_branch, " +
+                     "status_code, started_at, completed_at, total_files, total_findings, " +
                      "critical_count, high_count, medium_count, low_count, info_count, " +
-                     "error_message, duration_ms) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                     "error_message, duration_ms, policy_id, endpoint_id) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
             
             stmt.setLong(1, run.getUserId());
             stmt.setLong(2, run.getRepositoryId());
@@ -59,14 +60,17 @@ public class JdbcAnalysisRunRepository implements AnalysisRunRepository {
             setInteger(stmt, 14, run.getInfoCount());
             stmt.setString(15, run.getErrorMessage());
             setLong(stmt, 16, run.getDurationMs());
+            setLong(stmt, 17, run.getPolicyId());
+            setLong(stmt, 18, run.getEndpointId());
             
             stmt.executeUpdate();
             
-            try (ResultSet rs = stmt.getGeneratedKeys()) {
-                if (rs.next()) {
-                    run.setId(rs.getLong(1));
-                }
+            ResultSet rs = stmt.getGeneratedKeys();
+            if (rs.next()) {
+                run.setId(rs.getLong(1));
             }
+            rs.close();
+            stmt.close();
             
             return run;
         } catch (Exception e) {
@@ -75,12 +79,13 @@ public class JdbcAnalysisRunRepository implements AnalysisRunRepository {
     }
     
     private AnalysisRun update(AnalysisRun run) throws RepositoryException {
-        String sql = "UPDATE analysis_runs SET status = ?, completed_at = ?, total_files = ?, " +
+        String sql = "UPDATE analysis_runs SET status_code = ?, completed_at = ?, total_files = ?, " +
                      "total_findings = ?, critical_count = ?, high_count = ?, medium_count = ?, " +
                      "low_count = ?, info_count = ?, error_message = ?, duration_ms = ? WHERE id = ?";
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
             
             stmt.setString(1, run.getStatus().name());
             stmt.setTimestamp(2, run.getCompletedAt() != null ? 
@@ -94,9 +99,10 @@ public class JdbcAnalysisRunRepository implements AnalysisRunRepository {
             setInteger(stmt, 9, run.getInfoCount());
             stmt.setString(10, run.getErrorMessage());
             setLong(stmt, 11, run.getDurationMs());
-            stmt.setLong(12, run.getId());
+            setLong(stmt, 12, run.getId());
             
             stmt.executeUpdate();
+            stmt.close();
             return run;
         } catch (Exception e) {
             throw new RepositoryException("Failed to update analysis run", e);

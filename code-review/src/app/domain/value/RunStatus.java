@@ -2,45 +2,21 @@ package app.domain.value;
 
 /**
  * Status of an analysis run.
+ * Must match values in run_status_type catalog table.
  */
 public enum RunStatus {
     /**
-     * Analysis is pending execution
-     */
-    PENDING,
-    
-    /**
-     * Analysis is currently running
-     */
-    RUNNING,
-    
-    /**
      * Analysis completed successfully
-     */
-    COMPLETED,
-    
-    /**
-     * Analysis completed successfully (alias for COMPLETED)
      */
     SUCCESS,
     
     /**
      * Analysis failed due to error
      */
-    FAILED,
-    
-    /**
-     * Analysis had an error
-     */
     ERROR,
     
     /**
-     * Analysis completed with empty diff
+     * No changes found to analyze
      */
-    EMPTY_DIFF,
-    
-    /**
-     * Analysis was cancelled by user
-     */
-    CANCELLED
+    EMPTY_DIFF
 }

@@ -31,28 +31,24 @@ public class JdbcRepositoryRefRepository implements RepositoryRefRepository {
     }
     
     private RepositoryRef insert(RepositoryRef repo) throws RepositoryException {
-        String sql = "INSERT INTO repositories (name, local_path, default_branch, description, " +
-                     "created_at, last_analyzed_at, active) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO repositories (local_path, vcs, created_at) VALUES (?, ?, ?)";
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
             
-            stmt.setString(1, repo.getName());
-            stmt.setString(2, repo.getLocalPath());
-            stmt.setString(3, repo.getDefaultBranch());
-            stmt.setString(4, repo.getDescription());
-            stmt.setTimestamp(5, Timestamp.valueOf(repo.getCreatedAt()));
-            stmt.setTimestamp(6, repo.getLastAnalyzedAt() != null ? 
-                Timestamp.valueOf(repo.getLastAnalyzedAt()) : null);
-            stmt.setBoolean(7, repo.isActive());
+            stmt.setString(1, repo.getLocalPath());
+            stmt.setString(2, "git"); // Always git for now
+            stmt.setTimestamp(3, Timestamp.valueOf(repo.getCreatedAt()));
             
             stmt.executeUpdate();
             
-            try (ResultSet rs = stmt.getGeneratedKeys()) {
-                if (rs.next()) {
-                    repo.setId(rs.getLong(1));
-                }
+            ResultSet rs = stmt.getGeneratedKeys();
+            if (rs.next()) {
+                repo.setId(rs.getLong(1));
             }
+            rs.close();
+            stmt.close();
             
             return repo;
         } catch (Exception e) {
@@ -61,26 +57,9 @@ public class JdbcRepositoryRefRepository implements RepositoryRefRepository {
     }
     
     private RepositoryRef update(RepositoryRef repo) throws RepositoryException {
-        String sql = "UPDATE repositories SET name = ?, local_path = ?, default_branch = ?, " +
-                     "description = ?, last_analyzed_at = ?, active = ? WHERE id = ?";
-        
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            
-            stmt.setString(1, repo.getName());
-            stmt.setString(2, repo.getLocalPath());
-            stmt.setString(3, repo.getDefaultBranch());
-            stmt.setString(4, repo.getDescription());
-            stmt.setTimestamp(5, repo.getLastAnalyzedAt() != null ? 
-                Timestamp.valueOf(repo.getLastAnalyzedAt()) : null);
-            stmt.setBoolean(6, repo.isActive());
-            stmt.setLong(7, repo.getId());
-            
-            stmt.executeUpdate();
-            return repo;
-        } catch (Exception e) {
-            throw new RepositoryException("Failed to update repository", e);
-        }
+        // Note: Current DB schema only has (id, local_path, vcs, created_at)
+        // No updatable fields, so just return the repo unchanged
+        return repo;
     }
     
     @Override

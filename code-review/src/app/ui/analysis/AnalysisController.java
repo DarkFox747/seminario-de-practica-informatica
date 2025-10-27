@@ -5,6 +5,7 @@ import app.application.dto.AnalysisResultDTO;
 import app.application.dto.FindingSummaryDTO;
 import app.application.service.AnalyzeBranchService;
 import app.domain.entity.User;
+import app.domain.port.DiffEngine;
 import app.domain.value.Severity;
 import app.ui.common.ConfirmDialog;
 import app.ui.common.ErrorDialog;
@@ -21,11 +22,13 @@ import java.util.function.Consumer;
 public class AnalysisController {
     
     private final AnalyzeBranchService analyzeBranchService;
+    private final DiffEngine diffEngine;
     private final AnalysisView view;
     private final User currentUser;
     
-    public AnalysisController(AnalyzeBranchService analyzeBranchService, User currentUser) {
+    public AnalysisController(AnalyzeBranchService analyzeBranchService, DiffEngine diffEngine, User currentUser) {
         this.analyzeBranchService = analyzeBranchService;
+        this.diffEngine = diffEngine;
         this.currentUser = currentUser;
         this.view = new AnalysisView(this);
     }
@@ -120,7 +123,7 @@ public class AnalysisController {
     }
     
     /**
-     * Carga lista de branches disponibles desde el repo.
+     * Carga lista de branches disponibles desde el repo usando GitDiffEngine.
      */
     public void loadBranches(String repoPath, Consumer<List<String>> callback) {
         if (repoPath == null || repoPath.trim().isEmpty()) {
@@ -131,15 +134,21 @@ public class AnalysisController {
         Task<List<String>> task = new Task<>() {
             @Override
             protected List<String> call() throws Exception {
-                // En producción, llamar a GitDiffEngine.getBranches()
-                // Por ahora retornamos algunos ejemplos
-                return List.of("main", "develop", "feature/new-feature", "bugfix/issue-123");
+                // Validar que sea un repo git válido
+                if (!diffEngine.isValidRepository(repoPath)) {
+                    throw new IllegalArgumentException("Invalid Git repository: " + repoPath);
+                }
+                
+                // Obtener branches reales del repositorio
+                return diffEngine.getBranches(repoPath);
             }
         };
         
         task.setOnSucceeded(event -> callback.accept(task.getValue()));
         task.setOnFailed(event -> {
-            ErrorDialog.show("Load Branches Failed", "Could not load branches from repository", task.getException());
+            ErrorDialog.show("Load Branches Failed", 
+                "Could not load branches from repository.\nMake sure the path points to a valid Git repository.", 
+                task.getException());
             callback.accept(List.of());
         });
         

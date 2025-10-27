@@ -28,7 +28,7 @@ public class AnalysisRun {
     private Long durationMs;
 
     public AnalysisRun() {
-        this.status = RunStatus.PENDING;
+        this.status = RunStatus.SUCCESS; // Will be set to ERROR if fails
         this.startedAt = LocalDateTime.now();
     }
 
@@ -40,20 +40,22 @@ public class AnalysisRun {
         this.targetBranch = targetBranch;
     }
 
-    public void markAsRunning() {
-        this.status = RunStatus.RUNNING;
-    }
-
     public void markAsCompleted() {
-        this.status = RunStatus.COMPLETED;
+        this.status = RunStatus.SUCCESS;
         this.completedAt = LocalDateTime.now();
         this.durationMs = java.time.Duration.between(startedAt, completedAt).toMillis();
     }
 
     public void markAsFailed(String errorMessage) {
-        this.status = RunStatus.FAILED;
+        this.status = RunStatus.ERROR;
         this.completedAt = LocalDateTime.now();
         this.errorMessage = errorMessage;
+        this.durationMs = java.time.Duration.between(startedAt, completedAt).toMillis();
+    }
+    
+    public void markAsEmptyDiff() {
+        this.status = RunStatus.EMPTY_DIFF;
+        this.completedAt = LocalDateTime.now();
         this.durationMs = java.time.Duration.between(startedAt, completedAt).toMillis();
     }
 

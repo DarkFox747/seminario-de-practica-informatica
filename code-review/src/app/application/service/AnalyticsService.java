@@ -123,9 +123,9 @@ public class AnalyticsService {
         
         for (AnalysisRun run : runs) {
             // Count by status
-            if (run.getStatus() == RunStatus.COMPLETED) {
+            if (run.getStatus() == RunStatus.SUCCESS) {
                 completedRuns++;
-            } else if (run.getStatus() == RunStatus.FAILED) {
+            } else if (run.getStatus() == RunStatus.ERROR) {
                 failedRuns++;
             }
             

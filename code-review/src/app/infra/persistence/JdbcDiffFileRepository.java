@@ -32,26 +32,27 @@ public class JdbcDiffFileRepository implements DiffFileRepository {
     }
     
     private DiffFile insert(DiffFile file) throws RepositoryException {
-        String sql = "INSERT INTO diff_files (analysis_run_id, file_path, change_type, " +
-                     "lines_added, lines_removed, old_path) VALUES (?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO diff_files (run_id, path, change_type_code, " +
+                     "additions, deletions) VALUES (?, ?, ?, ?, ?)";
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
             
             stmt.setLong(1, file.getAnalysisRunId());
             stmt.setString(2, file.getFilePath());
             stmt.setString(3, file.getChangeType().name());
             stmt.setInt(4, file.getLinesAdded());
             stmt.setInt(5, file.getLinesRemoved());
-            stmt.setString(6, file.getOldPath());
             
             stmt.executeUpdate();
             
-            try (ResultSet rs = stmt.getGeneratedKeys()) {
-                if (rs.next()) {
-                    file.setId(rs.getLong(1));
-                }
+            ResultSet rs = stmt.getGeneratedKeys();
+            if (rs.next()) {
+                file.setId(rs.getLong(1));
             }
+            rs.close();
+            stmt.close();
             
             return file;
         } catch (Exception e) {
@@ -60,20 +61,21 @@ public class JdbcDiffFileRepository implements DiffFileRepository {
     }
     
     private DiffFile update(DiffFile file) throws RepositoryException {
-        String sql = "UPDATE diff_files SET file_path = ?, change_type = ?, " +
-                     "lines_added = ?, lines_removed = ?, old_path = ? WHERE id = ?";
+        String sql = "UPDATE diff_files SET path = ?, change_type_code = ?, " +
+                     "additions = ?, deletions = ? WHERE id = ?";
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
             
             stmt.setString(1, file.getFilePath());
             stmt.setString(2, file.getChangeType().name());
             stmt.setInt(3, file.getLinesAdded());
             stmt.setInt(4, file.getLinesRemoved());
-            stmt.setString(5, file.getOldPath());
-            stmt.setLong(6, file.getId());
+            stmt.setLong(5, file.getId());
             
             stmt.executeUpdate();
+            stmt.close();
             return file;
         } catch (Exception e) {
             throw new RepositoryException("Failed to update diff file", e);
@@ -84,17 +86,22 @@ public class JdbcDiffFileRepository implements DiffFileRepository {
     public Optional<DiffFile> findById(Long id) throws RepositoryException {
         String sql = "SELECT * FROM diff_files WHERE id = ?";
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
             
             stmt.setLong(1, id);
             
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return Optional.of(mapRow(rs));
-                }
-                return Optional.empty();
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                DiffFile file = mapRow(rs);
+                rs.close();
+                stmt.close();
+                return Optional.of(file);
             }
+            rs.close();
+            stmt.close();
+            return Optional.empty();
         } catch (Exception e) {
             throw new RepositoryException("Failed to find diff file by id", e);
         }
@@ -102,19 +109,21 @@ public class JdbcDiffFileRepository implements DiffFileRepository {
     
     @Override
     public List<DiffFile> findByAnalysisRunId(Long analysisRunId) throws RepositoryException {
-        String sql = "SELECT * FROM diff_files WHERE analysis_run_id = ? ORDER BY file_path";
+        String sql = "SELECT * FROM diff_files WHERE run_id = ? ORDER BY path";
         List<DiffFile> files = new ArrayList<>();
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
             
             stmt.setLong(1, analysisRunId);
             
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    files.add(mapRow(rs));
-                }
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                files.add(mapRow(rs));
             }
+            rs.close();
+            stmt.close();
             return files;
         } catch (Exception e) {
             throw new RepositoryException("Failed to find diff files by run", e);
@@ -138,12 +147,11 @@ public class JdbcDiffFileRepository implements DiffFileRepository {
     private DiffFile mapRow(ResultSet rs) throws SQLException {
         DiffFile file = new DiffFile();
         file.setId(rs.getLong("id"));
-        file.setAnalysisRunId(rs.getLong("analysis_run_id"));
-        file.setFilePath(rs.getString("file_path"));
-        file.setChangeType(FileChangeType.valueOf(rs.getString("change_type")));
-        file.setLinesAdded(rs.getInt("lines_added"));
-        file.setLinesRemoved(rs.getInt("lines_removed"));
-        file.setOldPath(rs.getString("old_path"));
+        file.setAnalysisRunId(rs.getLong("run_id"));
+        file.setFilePath(rs.getString("path"));
+        file.setChangeType(FileChangeType.valueOf(rs.getString("change_type_code")));
+        file.setLinesAdded(rs.getInt("additions"));
+        file.setLinesRemoved(rs.getInt("deletions"));
         return file;
     }
 }

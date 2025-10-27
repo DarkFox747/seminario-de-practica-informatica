@@ -44,6 +44,7 @@ public class Main extends Application {
         // Create controllers with services
         AnalysisController analysisController = new AnalysisController(
             factory.getAnalyzeBranchService(),
+            factory.getDiffEngine(),
             currentUser
         );
         
