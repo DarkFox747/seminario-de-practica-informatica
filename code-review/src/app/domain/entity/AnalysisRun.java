@@ -10,6 +10,8 @@ public class AnalysisRun {
     private Long id;
     private Long userId;
     private Long repositoryId;
+    private Long policyId;
+    private Long endpointId;
     private String baseBranch;
     private String targetBranch;
     private RunStatus status;
@@ -78,6 +80,22 @@ public class AnalysisRun {
 
     public void setRepositoryId(Long repositoryId) {
         this.repositoryId = repositoryId;
+    }
+
+    public Long getPolicyId() {
+        return policyId;
+    }
+
+    public void setPolicyId(Long policyId) {
+        this.policyId = policyId;
+    }
+
+    public Long getEndpointId() {
+        return endpointId;
+    }
+
+    public void setEndpointId(Long endpointId) {
+        this.endpointId = endpointId;
     }
 
     public String getBaseBranch() {

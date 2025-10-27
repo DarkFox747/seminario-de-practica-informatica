@@ -28,15 +28,15 @@ INSERT INTO repositories (id, local_path, vcs, created_at) VALUES
 -- Políticas de severidad
 -- =========================
 
-INSERT INTO severity_policies (id, name, rules_json, version, effective_from, created_at) VALUES
-  (1, 'Default Policy',
+INSERT INTO severity_policies (id, name, description, rules_json, version, active, effective_from, created_by, created_at) VALUES
+  (1, 'Default Policy', 'Default severity classification policy',
    '{
      "security": "CRITICAL",
      "performance": "HIGH",
      "style": "LOW",
      "maintainability": "MEDIUM"
    }',
-   1, CURDATE(), NOW()
+   1, 1, CURDATE(), 1, NOW()
   );
 
 -- =========================
@@ -59,10 +59,12 @@ INSERT INTO endpoint_mocks (id, name, version, spec, active, created_at) VALUES
 INSERT INTO analysis_runs (
   id, user_id, repo_id, policy_id, endpoint_id,
   base_branch, target_branch, status_code, total_files, total_findings,
-  started_at, finished_at, duration_ms, created_at
+  critical_count, high_count, medium_count, low_count, info_count,
+  started_at, completed_at, duration_ms, created_at
 ) VALUES (
   1, 1, 1, 1, 1,
   'main', 'feature/refactor-service', 'SUCCESS', 5, 8,
+  3, 2, 2, 1, 0,
   NOW() - INTERVAL 1 HOUR, NOW() - INTERVAL 50 MINUTE, 600000, NOW()
 );
 

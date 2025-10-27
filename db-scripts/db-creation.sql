@@ -74,12 +74,20 @@ DROP TABLE IF EXISTS severity_policies;
 CREATE TABLE severity_policies (
   id             BIGINT        NOT NULL AUTO_INCREMENT,
   name           VARCHAR(120)  NOT NULL,
+  description    VARCHAR(512)  NULL,
   rules_json     TEXT          NOT NULL,   -- mapeo de categorías -> severidades
-  version        INT           NOT NULL,
-  effective_from DATE          NOT NULL,
+  version        INT           NOT NULL DEFAULT 1,
+  active         TINYINT(1)    NOT NULL DEFAULT 1,
+  effective_from DATE          NULL,
+  created_by     BIGINT        NULL,
   created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at     DATETIME      NULL,
   CONSTRAINT pk_severity_policies PRIMARY KEY (id),
-  KEY idx_policies_version (version)
+  CONSTRAINT fk_policies_created_by FOREIGN KEY (created_by)
+    REFERENCES users(id)
+    ON UPDATE RESTRICT ON DELETE SET NULL,
+  KEY idx_policies_version (version),
+  KEY idx_policies_active (active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 DROP TABLE IF EXISTS endpoint_mocks;
@@ -96,20 +104,26 @@ CREATE TABLE endpoint_mocks (
 
 DROP TABLE IF EXISTS analysis_runs;
 CREATE TABLE analysis_runs (
-  id            BIGINT        NOT NULL AUTO_INCREMENT,
-  user_id       BIGINT        NOT NULL,
-  repo_id       BIGINT        NOT NULL,
-  policy_id     BIGINT        NOT NULL,
-  endpoint_id   BIGINT            NULL,   -- puede ser NULL si el mock está embebido
-  base_branch   VARCHAR(100)  NOT NULL,
-  target_branch VARCHAR(100)  NOT NULL,
-  status_code   VARCHAR(20)   NOT NULL,
-  total_files   INT               NULL,
-  total_findings INT              NULL,
-  started_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  finished_at   DATETIME          NULL,
-  duration_ms   BIGINT            NULL,
-  created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id              BIGINT        NOT NULL AUTO_INCREMENT,
+  user_id         BIGINT        NOT NULL,
+  repo_id         BIGINT        NOT NULL,
+  policy_id       BIGINT        NOT NULL,
+  endpoint_id     BIGINT            NULL,   -- puede ser NULL si el mock está embebido
+  base_branch     VARCHAR(100)  NOT NULL,
+  target_branch   VARCHAR(100)  NOT NULL,
+  status_code     VARCHAR(20)   NOT NULL,
+  total_files     INT               NULL,
+  total_findings  INT               NULL,
+  critical_count  INT               NULL DEFAULT 0,
+  high_count      INT               NULL DEFAULT 0,
+  medium_count    INT               NULL DEFAULT 0,
+  low_count       INT               NULL DEFAULT 0,
+  info_count      INT               NULL DEFAULT 0,
+  error_message   TEXT              NULL,
+  started_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at    DATETIME          NULL,
+  duration_ms     BIGINT            NULL,
+  created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT pk_analysis_runs PRIMARY KEY (id),
   CONSTRAINT fk_runs_user FOREIGN KEY (user_id)
     REFERENCES users(id)

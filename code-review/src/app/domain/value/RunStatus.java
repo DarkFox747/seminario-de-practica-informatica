@@ -20,9 +20,24 @@ public enum RunStatus {
     COMPLETED,
     
     /**
+     * Analysis completed successfully (alias for COMPLETED)
+     */
+    SUCCESS,
+    
+    /**
      * Analysis failed due to error
      */
     FAILED,
+    
+    /**
+     * Analysis had an error
+     */
+    ERROR,
+    
+    /**
+     * Analysis completed with empty diff
+     */
+    EMPTY_DIFF,
     
     /**
      * Analysis was cancelled by user

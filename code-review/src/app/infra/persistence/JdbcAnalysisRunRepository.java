@@ -172,17 +172,19 @@ public class JdbcAnalysisRunRepository implements AnalysisRunRepository {
                      "ORDER BY started_at DESC";
         List<AnalysisRun> runs = new ArrayList<>();
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
             
             stmt.setTimestamp(1, Timestamp.valueOf(from));
             stmt.setTimestamp(2, Timestamp.valueOf(to));
             
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    runs.add(mapRow(rs));
-                }
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                runs.add(mapRow(rs));
             }
+            rs.close();
+            stmt.close();
             return runs;
         } catch (Exception e) {
             throw new RepositoryException("Failed to find runs by date range", e);
@@ -194,16 +196,18 @@ public class JdbcAnalysisRunRepository implements AnalysisRunRepository {
         String sql = "SELECT * FROM analysis_runs ORDER BY started_at DESC LIMIT ?";
         List<AnalysisRun> runs = new ArrayList<>();
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
             
             stmt.setInt(1, limit);
             
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    runs.add(mapRow(rs));
-                }
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                runs.add(mapRow(rs));
             }
+            rs.close();
+            stmt.close();
             return runs;
         } catch (Exception e) {
             throw new RepositoryException("Failed to find recent runs", e);
@@ -214,10 +218,10 @@ public class JdbcAnalysisRunRepository implements AnalysisRunRepository {
         AnalysisRun run = new AnalysisRun();
         run.setId(rs.getLong("id"));
         run.setUserId(rs.getLong("user_id"));
-        run.setRepositoryId(rs.getLong("repository_id"));
+        run.setRepositoryId(rs.getLong("repo_id"));
         run.setBaseBranch(rs.getString("base_branch"));
         run.setTargetBranch(rs.getString("target_branch"));
-        run.setStatus(RunStatus.valueOf(rs.getString("status")));
+        run.setStatus(RunStatus.valueOf(rs.getString("status_code")));
         run.setStartedAt(rs.getTimestamp("started_at").toLocalDateTime());
         
         Timestamp completed = rs.getTimestamp("completed_at");
@@ -234,6 +238,17 @@ public class JdbcAnalysisRunRepository implements AnalysisRunRepository {
         run.setInfoCount(getInteger(rs, "info_count"));
         run.setErrorMessage(rs.getString("error_message"));
         run.setDurationMs(getLong(rs, "duration_ms"));
+        
+        // Handle nullable FKs
+        long policyId = rs.getLong("policy_id");
+        if (!rs.wasNull()) {
+            run.setPolicyId(policyId);
+        }
+        
+        long endpointId = rs.getLong("endpoint_id");
+        if (!rs.wasNull()) {
+            run.setEndpointId(endpointId);
+        }
         
         return run;
     }

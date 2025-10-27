@@ -6,7 +6,7 @@ echo Starting Code Review Application...
 REM Set paths
 set BIN_DIR=bin
 set LIB_DIR=lib
-set JAVAFX_SDK=..\javafx-sdk-25.0.1
+set NATIVE_DIR=lib\native
 
 REM Check if compiled
 if not exist %BIN_DIR%\app\Main.class (
@@ -19,17 +19,11 @@ if not exist %BIN_DIR%\app\Main.class (
     )
 )
 
-REM Build classpath
-set CLASSPATH=%BIN_DIR%;%LIB_DIR%\javafx.base.jar;%LIB_DIR%\javafx.controls.jar;%LIB_DIR%\javafx.fxml.jar;%LIB_DIR%\javafx.graphics.jar
+REM Build classpath with MySQL connector
+set CLASSPATH=%BIN_DIR%;%LIB_DIR%\javafx.base.jar;%LIB_DIR%\javafx.controls.jar;%LIB_DIR%\javafx.fxml.jar;%LIB_DIR%\javafx.graphics.jar;%LIB_DIR%\mysql-connector-j-8.0.33.jar
 
-REM Add JavaFX bin directory to library path for native libraries
-set JAVAFX_BIN=%JAVAFX_SDK%\bin
-
-REM Set JavaFX options
-set JAVAFX_OPTS=--enable-native-access=javafx.graphics -Djava.library.path="%JAVAFX_BIN%"
-
-REM Run with JavaFX modules
+REM Run with JavaFX modules and native libraries
 echo Running application...
-java %JAVAFX_OPTS% --module-path "%LIB_DIR%" --add-modules javafx.controls,javafx.fxml -cp "%CLASSPATH%" app.Main
+java --module-path "%LIB_DIR%" --add-modules javafx.controls,javafx.fxml -Djava.library.path="%NATIVE_DIR%" -cp "%CLASSPATH%" app.Main
 
 pause

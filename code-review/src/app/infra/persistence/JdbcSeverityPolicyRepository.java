@@ -108,13 +108,19 @@ public class JdbcSeverityPolicyRepository implements SeverityPolicyRepository {
     public Optional<SeverityPolicy> findActivePolicy() throws RepositoryException {
         String sql = "SELECT * FROM severity_policies WHERE active = true ORDER BY created_at DESC LIMIT 1";
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            ResultSet rs = stmt.executeQuery();
             
             if (rs.next()) {
-                return Optional.of(mapRow(rs));
+                SeverityPolicy policy = mapRow(rs);
+                rs.close();
+                stmt.close();
+                return Optional.of(policy);
             }
+            rs.close();
+            stmt.close();
             return Optional.empty();
         } catch (Exception e) {
             throw new RepositoryException("Failed to find active policy", e);
@@ -126,13 +132,16 @@ public class JdbcSeverityPolicyRepository implements SeverityPolicyRepository {
         String sql = "SELECT * FROM severity_policies ORDER BY created_at DESC";
         List<SeverityPolicy> policies = new ArrayList<>();
         
-        try (Connection conn = txManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
+        try {
+            Connection conn = txManager.getConnection();
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            ResultSet rs = stmt.executeQuery();
             
             while (rs.next()) {
                 policies.add(mapRow(rs));
             }
+            rs.close();
+            stmt.close();
             return policies;
         } catch (Exception e) {
             throw new RepositoryException("Failed to find all policies", e);

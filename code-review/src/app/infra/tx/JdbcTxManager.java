@@ -79,8 +79,20 @@ public class JdbcTxManager implements TxManager {
         }
         
         try {
+            // Check if connection is still valid
+            if (conn.isClosed()) {
+                throw new TxException("Connection is already closed");
+            }
             conn.commit();
         } catch (SQLException e) {
+            // Try to rollback if commit fails
+            try {
+                if (!conn.isClosed()) {
+                    conn.rollback();
+                }
+            } catch (SQLException rollbackEx) {
+                // Ignore rollback errors
+            }
             throw new TxException("Failed to commit transaction", e);
         } finally {
             close();
