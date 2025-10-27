@@ -47,7 +47,7 @@ CREATE TABLE severity_type (
 
 DROP TABLE IF EXISTS users;
 CREATE TABLE users (
-  id          VARCHAR(36)  NOT NULL,
+  id          BIGINT       NOT NULL AUTO_INCREMENT,
   name        VARCHAR(120) NOT NULL,
   email       VARCHAR(180) NOT NULL,
   role_code   VARCHAR(20)  NOT NULL,
@@ -62,7 +62,7 @@ CREATE TABLE users (
 
 DROP TABLE IF EXISTS repositories;
 CREATE TABLE repositories (
-  id          VARCHAR(36)   NOT NULL,
+  id          BIGINT        NOT NULL AUTO_INCREMENT,
   local_path  VARCHAR(512)  NOT NULL,
   vcs         VARCHAR(20)   NOT NULL,   -- 'git'
   created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -72,7 +72,7 @@ CREATE TABLE repositories (
 
 DROP TABLE IF EXISTS severity_policies;
 CREATE TABLE severity_policies (
-  id             VARCHAR(36)   NOT NULL,
+  id             BIGINT        NOT NULL AUTO_INCREMENT,
   name           VARCHAR(120)  NOT NULL,
   rules_json     TEXT          NOT NULL,   -- mapeo de categorías -> severidades
   version        INT           NOT NULL,
@@ -84,7 +84,7 @@ CREATE TABLE severity_policies (
 
 DROP TABLE IF EXISTS endpoint_mocks;
 CREATE TABLE endpoint_mocks (
-  id          VARCHAR(36)   NOT NULL,
+  id          BIGINT        NOT NULL AUTO_INCREMENT,
   name        VARCHAR(120)  NOT NULL,
   version     VARCHAR(40)   NOT NULL,
   spec        TEXT          NOT NULL,     -- contrato JSON simulado
@@ -96,14 +96,16 @@ CREATE TABLE endpoint_mocks (
 
 DROP TABLE IF EXISTS analysis_runs;
 CREATE TABLE analysis_runs (
-  id            VARCHAR(36)   NOT NULL,
-  user_id       VARCHAR(36)   NOT NULL,
-  repo_id       VARCHAR(36)   NOT NULL,
-  policy_id     VARCHAR(36)   NOT NULL,
-  endpoint_id   VARCHAR(36)       NULL,   -- puede ser NULL si el mock está embebido
+  id            BIGINT        NOT NULL AUTO_INCREMENT,
+  user_id       BIGINT        NOT NULL,
+  repo_id       BIGINT        NOT NULL,
+  policy_id     BIGINT        NOT NULL,
+  endpoint_id   BIGINT            NULL,   -- puede ser NULL si el mock está embebido
   base_branch   VARCHAR(100)  NOT NULL,
   target_branch VARCHAR(100)  NOT NULL,
   status_code   VARCHAR(20)   NOT NULL,
+  total_files   INT               NULL,
+  total_findings INT              NULL,
   started_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   finished_at   DATETIME          NULL,
   duration_ms   BIGINT            NULL,
@@ -131,8 +133,8 @@ CREATE TABLE analysis_runs (
 
 DROP TABLE IF EXISTS diff_files;
 CREATE TABLE diff_files (
-  id                 VARCHAR(36)  NOT NULL,
-  run_id             VARCHAR(36)  NOT NULL,
+  id                 BIGINT       NOT NULL AUTO_INCREMENT,
+  run_id             BIGINT       NOT NULL,
   path               VARCHAR(512) NOT NULL,
   change_type_code   VARCHAR(20)  NOT NULL,
   additions          INT          NOT NULL DEFAULT 0,
@@ -150,8 +152,8 @@ CREATE TABLE diff_files (
 
 DROP TABLE IF EXISTS findings;
 CREATE TABLE findings (
-  id             VARCHAR(36)  NOT NULL,
-  run_id         VARCHAR(36)  NOT NULL,
+  id             BIGINT       NOT NULL AUTO_INCREMENT,
+  run_id         BIGINT       NOT NULL,
   code           VARCHAR(64)  NOT NULL,    -- identificador de regla del mock
   title          VARCHAR(255) NOT NULL,
   description    TEXT         NOT NULL,
@@ -179,17 +181,17 @@ CREATE TABLE findings (
 
 DROP TABLE IF EXISTS user_stats;
 CREATE TABLE user_stats (
-  id              VARCHAR(36) NOT NULL,
-  user_id         VARCHAR(36) NOT NULL,
-  period_start    DATE        NOT NULL,
-  period_end      DATE        NOT NULL,
-  analyses_count  INT         NOT NULL DEFAULT 0,
-  findings_count  INT         NOT NULL DEFAULT 0,
-  critical_count  INT         NOT NULL DEFAULT 0,
-  high_count      INT         NOT NULL DEFAULT 0,
-  medium_count    INT         NOT NULL DEFAULT 0,
-  low_count       INT         NOT NULL DEFAULT 0,
-  created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id              BIGINT  NOT NULL AUTO_INCREMENT,
+  user_id         BIGINT  NOT NULL,
+  period_start    DATE    NOT NULL,
+  period_end      DATE    NOT NULL,
+  analyses_count  INT     NOT NULL DEFAULT 0,
+  findings_count  INT     NOT NULL DEFAULT 0,
+  critical_count  INT     NOT NULL DEFAULT 0,
+  high_count      INT     NOT NULL DEFAULT 0,
+  medium_count    INT     NOT NULL DEFAULT 0,
+  low_count       INT     NOT NULL DEFAULT 0,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT pk_user_stats PRIMARY KEY (id),
   CONSTRAINT fk_user_stats_user FOREIGN KEY (user_id)
     REFERENCES users(id)
@@ -199,27 +201,27 @@ CREATE TABLE user_stats (
 
 DROP TABLE IF EXISTS metrics_snapshots;
 CREATE TABLE metrics_snapshots (
-  id                 VARCHAR(36) NOT NULL,
-  period_start       DATE        NOT NULL,
-  period_end         DATE        NOT NULL,
-  total_analyses     INT         NOT NULL DEFAULT 0,
-  total_findings     INT         NOT NULL DEFAULT 0,
-  critical_count     INT         NOT NULL DEFAULT 0,
-  high_count         INT         NOT NULL DEFAULT 0,
-  medium_count       INT         NOT NULL DEFAULT 0,
-  low_count          INT         NOT NULL DEFAULT 0,
-  avg_severity_score DOUBLE      NULL,
-  created_at         DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id                 BIGINT  NOT NULL AUTO_INCREMENT,
+  period_start       DATE    NOT NULL,
+  period_end         DATE    NOT NULL,
+  total_analyses     INT     NOT NULL DEFAULT 0,
+  total_findings     INT     NOT NULL DEFAULT 0,
+  critical_count     INT     NOT NULL DEFAULT 0,
+  high_count         INT     NOT NULL DEFAULT 0,
+  medium_count       INT     NOT NULL DEFAULT 0,
+  low_count          INT     NOT NULL DEFAULT 0,
+  avg_severity_score DOUBLE  NULL,
+  created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT pk_metrics_snapshots PRIMARY KEY (id),
   KEY idx_metrics_period (period_start, period_end)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 DROP TABLE IF EXISTS dashboard_views;
 CREATE TABLE dashboard_views (
-  id             VARCHAR(36) NOT NULL,
-  owner_user_id  VARCHAR(36) NOT NULL,
-  filters_json   TEXT        NOT NULL,
-  created_at     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id             BIGINT  NOT NULL AUTO_INCREMENT,
+  owner_user_id  BIGINT  NOT NULL,
+  filters_json   TEXT    NOT NULL,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT pk_dashboard_views PRIMARY KEY (id),
   CONSTRAINT fk_dash_owner FOREIGN KEY (owner_user_id)
     REFERENCES users(id)

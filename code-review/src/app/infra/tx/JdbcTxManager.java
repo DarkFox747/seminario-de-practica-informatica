@@ -1,0 +1,119 @@
+package app.infra.tx;
+
+import app.config.AppConfig;
+import app.domain.port.TxException;
+import app.domain.port.TxManager;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
+/**
+ * JDBC-based transaction manager implementation.
+ * Uses ThreadLocal to maintain one connection per thread.
+ */
+public class JdbcTxManager implements TxManager {
+    
+    private static JdbcTxManager instance;
+    private final ThreadLocal<Connection> connectionHolder = new ThreadLocal<>();
+    private final AppConfig config;
+    
+    private JdbcTxManager() {
+        this.config = AppConfig.getInstance();
+        loadDriver();
+    }
+    
+    public static JdbcTxManager getInstance() {
+        if (instance == null) {
+            synchronized (JdbcTxManager.class) {
+                if (instance == null) {
+                    instance = new JdbcTxManager();
+                }
+            }
+        }
+        return instance;
+    }
+    
+    private void loadDriver() {
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            System.err.println("MySQL JDBC Driver not found: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public Connection getConnection() throws TxException {
+        Connection conn = connectionHolder.get();
+        if (conn == null) {
+            begin();
+            conn = connectionHolder.get();
+        }
+        return conn;
+    }
+    
+    @Override
+    public void begin() throws TxException {
+        if (connectionHolder.get() != null) {
+            throw new TxException("Transaction already active");
+        }
+        
+        try {
+            Connection conn = DriverManager.getConnection(
+                config.getDbUrl(),
+                config.getDbUsername(),
+                config.getDbPassword()
+            );
+            conn.setAutoCommit(false);
+            connectionHolder.set(conn);
+        } catch (SQLException e) {
+            throw new TxException("Failed to start transaction", e);
+        }
+    }
+    
+    @Override
+    public void commit() throws TxException {
+        Connection conn = connectionHolder.get();
+        if (conn == null) {
+            throw new TxException("No active transaction");
+        }
+        
+        try {
+            conn.commit();
+        } catch (SQLException e) {
+            throw new TxException("Failed to commit transaction", e);
+        } finally {
+            close();
+        }
+    }
+    
+    @Override
+    public void rollback() throws TxException {
+        Connection conn = connectionHolder.get();
+        if (conn == null) {
+            return; // Nothing to rollback
+        }
+        
+        try {
+            conn.rollback();
+        } catch (SQLException e) {
+            throw new TxException("Failed to rollback transaction", e);
+        } finally {
+            close();
+        }
+    }
+    
+    @Override
+    public void close() {
+        Connection conn = connectionHolder.get();
+        if (conn != null) {
+            try {
+                conn.close();
+            } catch (SQLException e) {
+                System.err.println("Error closing connection: " + e.getMessage());
+            } finally {
+                connectionHolder.remove();
+            }
+        }
+    }
+}

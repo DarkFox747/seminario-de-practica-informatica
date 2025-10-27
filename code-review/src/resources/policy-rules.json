@@ -1,0 +1,39 @@
+{
+  "name": "Default Severity Policy",
+  "version": 1,
+  "rules": [
+    {
+      "rulePattern": "SEC.*",
+      "categoryPattern": "Security",
+      "action": "upgrade",
+      "targetSeverity": "CRITICAL"
+    },
+    {
+      "rulePattern": ".*SQL.*",
+      "messagePattern": "(?i).*injection.*",
+      "action": "upgrade",
+      "targetSeverity": "CRITICAL"
+    },
+    {
+      "rulePattern": "CODE.*",
+      "categoryPattern": "Code Quality",
+      "action": "keep"
+    },
+    {
+      "categoryPattern": "Performance",
+      "severityThreshold": "HIGH",
+      "action": "downgrade",
+      "targetSeverity": "MEDIUM"
+    },
+    {
+      "categoryPattern": "Style",
+      "action": "downgrade",
+      "targetSeverity": "LOW"
+    },
+    {
+      "categoryPattern": "Documentation",
+      "action": "downgrade",
+      "targetSeverity": "INFO"
+    }
+  ]
+}

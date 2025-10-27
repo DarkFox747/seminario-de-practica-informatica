@@ -1,0 +1,47 @@
+[
+  {
+    "ruleId": "SEC001",
+    "category": "Security",
+    "message": "Potential SQL injection vulnerability detected",
+    "severity": "CRITICAL",
+    "lineNumber": 42,
+    "codeSnippet": "String sql = \"SELECT * FROM users WHERE id = \" + userId;",
+    "suggestion": "Use PreparedStatement instead of string concatenation"
+  },
+  {
+    "ruleId": "CODE002",
+    "category": "Code Quality",
+    "message": "Method complexity exceeds threshold",
+    "severity": "HIGH",
+    "lineNumber": 78,
+    "codeSnippet": "public void processData() { ... }",
+    "suggestion": "Consider breaking down this method into smaller functions"
+  },
+  {
+    "ruleId": "PERF003",
+    "category": "Performance",
+    "message": "Inefficient loop detected",
+    "severity": "MEDIUM",
+    "lineNumber": 105,
+    "codeSnippet": "for (int i = 0; i < list.size(); i++) { ... }",
+    "suggestion": "Cache list.size() or use enhanced for loop"
+  },
+  {
+    "ruleId": "STYLE004",
+    "category": "Style",
+    "message": "Variable naming does not follow conventions",
+    "severity": "LOW",
+    "lineNumber": 15,
+    "codeSnippet": "String MyVariable = \"test\";",
+    "suggestion": "Use camelCase for variable names: myVariable"
+  },
+  {
+    "ruleId": "INFO005",
+    "category": "Documentation",
+    "message": "Missing Javadoc for public method",
+    "severity": "INFO",
+    "lineNumber": 32,
+    "codeSnippet": "public void calculate() { ... }",
+    "suggestion": "Add Javadoc to document method purpose and parameters"
+  }
+]
