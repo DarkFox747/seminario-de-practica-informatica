@@ -10,12 +10,17 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- =========================
 -- Usuarios
 -- =========================
+-- Contraseñas para testing (todas hasheadas con SHA-256):
+--   demo@example.com   -> demo123  (hash: d3ad9315b7be5dd53b31a273b3b3aba5defe700808305aa16a3062b76658a791)
+--   lead@example.com   -> lead123  (hash: 8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918)
+--   qa@example.com     -> qa123    (hash: 9f735e0df9a1ddc702bf0a1a7b83033f9f7153a00c29de82cedadc9957289b05)
+--   admin@example.com  -> admin123 (hash: 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9)
 
-INSERT INTO users (id, name, email, role_code, active, created_at) VALUES
-  (1, 'Demo Developer', 'demo@example.com', 'DEVELOPER', 1, NOW()),
-  (2, 'Team Lead', 'lead@example.com', 'TECH_LEAD', 1, NOW()),
-  (3, 'QA Tester', 'qa@example.com', 'QA', 1, NOW()),
-  (4, 'Admin User', 'admin@example.com', 'ADMIN', 1, NOW());
+INSERT INTO users (id, name, email, password_hash, role_code, active, created_at) VALUES
+  (1, 'Demo Developer', 'demo@example.com', 'd3ad9315b7be5dd53b31a273b3b3aba5defe700808305aa16a3062b76658a791', 'DEVELOPER', 1, NOW()),
+  (2, 'Team Lead', 'lead@example.com', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 'TECH_LEAD', 1, NOW()),
+  (3, 'QA Tester', 'qa@example.com', '9f735e0df9a1ddc702bf0a1a7b83033f9f7153a00c29de82cedadc9957289b05', 'QA', 1, NOW()),
+  (4, 'Admin User', 'admin@example.com', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'ADMIN', 1, NOW());
 
 -- =========================
 -- Repositorio

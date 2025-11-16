@@ -3,7 +3,9 @@ package app;
 import app.config.AppConfig;
 import app.config.AppFactory;
 import app.domain.entity.User;
+import app.ui.LoginView;
 import app.ui.MainWindow;
+import app.ui.UserSession;
 import app.ui.analysis.AnalysisController;
 import app.ui.analytics.AnalyticsController;
 import app.ui.history.HistoryController;
@@ -17,6 +19,7 @@ import javafx.stage.Stage;
 public class Main extends Application {
     
     private AppFactory factory;
+    private Stage primaryStage;
     
     @Override
     public void init() throws Exception {
@@ -35,10 +38,27 @@ public class Main extends Application {
     
     @Override
     public void start(Stage primaryStage) throws Exception {
-        System.out.println("Starting application UI...");
+        this.primaryStage = primaryStage;
         
-        // Get demo user (or create if doesn't exist)
-        User currentUser = factory.getDemoUser();
+        System.out.println("Starting application...");
+        
+        // Show login screen
+        LoginView loginView = new LoginView(
+            factory.getLoginService(),
+            this::showMainWindow
+        );
+        
+        loginView.show();
+    }
+    
+    /**
+     * Shows the main application window after successful login.
+     */
+    private void showMainWindow() {
+        System.out.println("Login successful, showing main window...");
+        
+        // Get current logged-in user from session
+        User currentUser = UserSession.getCurrentUser();
         System.out.println("Current user: " + currentUser.getUsername());
         
         // Create controllers with services
@@ -49,7 +69,8 @@ public class Main extends Application {
         );
         
         HistoryController historyController = new HistoryController(
-            factory.getHistoryQueryService()
+            factory.getHistoryQueryService(),
+            factory.getExportService()
         );
         
         AnalyticsController analyticsController = new AnalyticsController(

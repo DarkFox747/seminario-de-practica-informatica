@@ -123,6 +123,34 @@ public class JdbcUserRepository implements UserRepository {
     }
     
     @Override
+    public Optional<User> findByEmail(String email) throws RepositoryException {
+        String sql = "SELECT * FROM users WHERE email = ? AND active = 1";
+        
+        Connection conn = null;
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        
+        try {
+            conn = txManager.getConnection();
+            stmt = conn.prepareStatement(sql);
+            stmt.setString(1, email);
+            rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                return Optional.of(mapRow(rs));
+            }
+            return Optional.empty();
+            
+        } catch (Exception e) {
+            throw new RepositoryException("Failed to find user by email", e);
+        } finally {
+            if (rs != null) try { rs.close(); } catch (SQLException ignored) {}
+            if (stmt != null) try { stmt.close(); } catch (SQLException ignored) {}
+            // NO cerrar conn - manejada por TxManager
+        }
+    }
+    
+    @Override
     public List<User> findAllActive() throws RepositoryException {
         String sql = "SELECT * FROM users WHERE active = true ORDER BY username";
         List<User> users = new ArrayList<>();
@@ -157,15 +185,14 @@ public class JdbcUserRepository implements UserRepository {
     private User mapRow(ResultSet rs) throws SQLException {
         User user = new User();
         user.setId(rs.getLong("id"));
-        user.setUsername(rs.getString("username"));
+        user.setUsername(rs.getString("name"));
         user.setEmail(rs.getString("email"));
-        user.setRole(UserRole.valueOf(rs.getString("role")));
+        user.setPasswordHash(rs.getString("password_hash"));
+        user.setRole(UserRole.valueOf(rs.getString("role_code")));
         user.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
         
-        Timestamp lastLogin = rs.getTimestamp("last_login_at");
-        if (lastLogin != null) {
-            user.setLastLoginAt(lastLogin.toLocalDateTime());
-        }
+        // La tabla users NO tiene last_login_at, usar null
+        user.setLastLoginAt(null);
         
         user.setActive(rs.getBoolean("active"));
         return user;

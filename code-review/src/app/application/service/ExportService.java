@@ -2,30 +2,71 @@ package app.application.service;
 
 import app.application.dto.AnalysisResultDTO;
 import app.application.dto.FindingSummaryDTO;
+import app.domain.entity.AnalysisRun;
+import app.domain.entity.Finding;
+import app.domain.port.*;
 import app.domain.value.Severity;
 
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Service for exporting analysis results to CSV/PDF.
  */
 public class ExportService {
     
-    private final HistoryQueryService historyService;
+    private final AnalysisRunRepository analysisRunRepo;
+    private final FindingRepository findingRepo;
+    private final TxManager txManager;
     
-    public ExportService(HistoryQueryService historyService) {
-        this.historyService = historyService;
+    public ExportService(AnalysisRunRepository analysisRunRepo,
+                        FindingRepository findingRepo,
+                        TxManager txManager) {
+        this.analysisRunRepo = analysisRunRepo;
+        this.findingRepo = findingRepo;
+        this.txManager = txManager;
     }
     
     /**
      * Export analysis results to CSV.
      */
     public File exportToCSV(Long analysisRunId, String outputPath) throws Exception {
-        AnalysisResultDTO result = historyService.getRunDetails(analysisRunId);
-        List<FindingSummaryDTO> findings = historyService.getFindings(analysisRunId);
+        AnalysisResultDTO result;
+        List<FindingSummaryDTO> findings;
+        
+        // Cleanup any leftover transaction from previous UI operations
+        if (txManager.isActive()) {
+            txManager.forceCleanup();
+        }
+        
+        // Single transaction for both operations
+        try {
+            txManager.begin();
+            
+            // Get run details
+            AnalysisRun run = analysisRunRepo.findById(analysisRunId)
+                .orElseThrow(() -> new Exception("Analysis run not found: " + analysisRunId));
+            result = mapToResultDTO(run);
+            
+            // Get findings
+            List<Finding> findingEntities = findingRepo.findByAnalysisRunId(analysisRunId);
+            findings = findingEntities.stream()
+                .map(this::mapToFindingSummary)
+                .collect(Collectors.toList());
+            
+            txManager.commit();
+            
+        } catch (Exception e) {
+            try {
+                txManager.rollback();
+            } catch (Exception rollbackEx) {
+                // Ignore
+            }
+            throw e;
+        }
         
         StringBuilder csv = new StringBuilder();
         
@@ -72,7 +113,29 @@ public class ExportService {
      * Export findings summary to CSV (severity breakdown).
      */
     public File exportSummaryToCSV(Long analysisRunId, String outputPath) throws Exception {
-        AnalysisResultDTO result = historyService.getRunDetails(analysisRunId);
+        AnalysisResultDTO result;
+        
+        // Cleanup any leftover transaction
+        if (txManager.isActive()) {
+            txManager.forceCleanup();
+        }
+        
+        try {
+            txManager.begin();
+            
+            AnalysisRun run = analysisRunRepo.findById(analysisRunId)
+                .orElseThrow(() -> new Exception("Analysis run not found: " + analysisRunId));
+            result = mapToResultDTO(run);
+            
+            txManager.commit();
+        } catch (Exception e) {
+            try {
+                txManager.rollback();
+            } catch (Exception rollbackEx) {
+                // Ignore rollback errors
+            }
+            throw e;
+        }
         
         StringBuilder csv = new StringBuilder();
         
@@ -98,8 +161,35 @@ public class ExportService {
      * Export to simple text report (lightweight alternative to PDF).
      */
     public File exportToTextReport(Long analysisRunId, String outputPath) throws Exception {
-        AnalysisResultDTO result = historyService.getRunDetails(analysisRunId);
-        List<FindingSummaryDTO> findings = historyService.getFindings(analysisRunId);
+        AnalysisResultDTO result;
+        List<FindingSummaryDTO> findings;
+        
+        // Cleanup any leftover transaction
+        if (txManager.isActive()) {
+            txManager.forceCleanup();
+        }
+        
+        try {
+            txManager.begin();
+            
+            AnalysisRun run = analysisRunRepo.findById(analysisRunId)
+                .orElseThrow(() -> new Exception("Analysis run not found: " + analysisRunId));
+            result = mapToResultDTO(run);
+            
+            List<Finding> findingEntities = findingRepo.findByAnalysisRunId(analysisRunId);
+            findings = findingEntities.stream()
+                .map(this::mapToFindingSummary)
+                .collect(Collectors.toList());
+            
+            txManager.commit();
+        } catch (Exception e) {
+            try {
+                txManager.rollback();
+            } catch (Exception rollbackEx) {
+                // Ignore rollback errors
+            }
+            throw e;
+        }
         
         StringBuilder report = new StringBuilder();
         
@@ -168,5 +258,36 @@ public class ExportService {
         }
         // Escape quotes
         return value.replace("\"", "\"\"");
+    }
+    
+    private AnalysisResultDTO mapToResultDTO(AnalysisRun run) {
+        AnalysisResultDTO dto = new AnalysisResultDTO();
+        dto.setAnalysisRunId(run.getId());
+        dto.setStatus(run.getStatus());
+        dto.setStartedAt(run.getStartedAt());
+        dto.setCompletedAt(run.getCompletedAt());
+        dto.setDurationMs(run.getDurationMs());
+        dto.setTotalFiles(run.getTotalFiles());
+        dto.setTotalFindings(run.getTotalFindings());
+        dto.setCriticalCount(run.getCriticalCount());
+        dto.setHighCount(run.getHighCount());
+        dto.setMediumCount(run.getMediumCount());
+        dto.setLowCount(run.getLowCount());
+        dto.setInfoCount(run.getInfoCount());
+        dto.setErrorMessage(run.getErrorMessage());
+        return dto;
+    }
+    
+    private FindingSummaryDTO mapToFindingSummary(Finding finding) {
+        FindingSummaryDTO dto = new FindingSummaryDTO();
+        dto.setFindingId(finding.getId());
+        dto.setFilePath(finding.getFilePath() != null ? finding.getFilePath() : "Unknown");
+        dto.setLineNumber(finding.getLineNumber());
+        dto.setRuleId(finding.getRuleId());
+        dto.setCategory(finding.getCategory());
+        dto.setMessage(finding.getMessage());
+        dto.setSeverity(finding.getSeverityFinal());
+        dto.setSuggestion(finding.getSuggestion());
+        return dto;
     }
 }

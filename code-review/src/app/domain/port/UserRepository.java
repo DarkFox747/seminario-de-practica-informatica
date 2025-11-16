@@ -25,6 +25,11 @@ public interface UserRepository {
     Optional<User> findByUsername(String username) throws RepositoryException;
     
     /**
+     * Find user by email.
+     */
+    Optional<User> findByEmail(String email) throws RepositoryException;
+    
+    /**
      * Find all active users.
      */
     List<User> findAllActive() throws RepositoryException;

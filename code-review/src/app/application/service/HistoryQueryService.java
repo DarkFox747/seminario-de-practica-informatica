@@ -3,7 +3,6 @@ package app.application.service;
 import app.application.dto.AnalysisResultDTO;
 import app.application.dto.FindingSummaryDTO;
 import app.domain.entity.AnalysisRun;
-import app.domain.entity.DiffFile;
 import app.domain.entity.Finding;
 import app.domain.port.*;
 import app.domain.value.Severity;
@@ -140,15 +139,10 @@ public class HistoryQueryService {
         try {
             txManager.begin();
             List<Finding> findings = findingRepo.findByAnalysisRunId(analysisRunId);
-            List<DiffFile> diffFiles = diffFileRepo.findByAnalysisRunId(analysisRunId);
             txManager.commit();
             
-            // Create a map for quick file lookup
-            java.util.Map<Long, String> filePathMap = diffFiles.stream()
-                .collect(Collectors.toMap(DiffFile::getId, DiffFile::getFilePath));
-            
             return findings.stream()
-                .map(f -> mapToFindingSummary(f, filePathMap))
+                .map(this::mapToFindingSummary)
                 .collect(Collectors.toList());
         } catch (Exception e) {
             txManager.rollback();
@@ -164,14 +158,10 @@ public class HistoryQueryService {
         try {
             txManager.begin();
             List<Finding> findings = findingRepo.findBySeverity(analysisRunId, severity);
-            List<DiffFile> diffFiles = diffFileRepo.findByAnalysisRunId(analysisRunId);
             txManager.commit();
             
-            java.util.Map<Long, String> filePathMap = diffFiles.stream()
-                .collect(Collectors.toMap(DiffFile::getId, DiffFile::getFilePath));
-            
             return findings.stream()
-                .map(f -> mapToFindingSummary(f, filePathMap))
+                .map(this::mapToFindingSummary)
                 .collect(Collectors.toList());
         } catch (Exception e) {
             txManager.rollback();
@@ -187,11 +177,52 @@ public class HistoryQueryService {
             txManager.begin();
             AnalysisRun run = analysisRunRepo.findById(analysisRunId)
                 .orElseThrow(() -> new Exception("Analysis run not found: " + analysisRunId));
+            AnalysisResultDTO result = mapToResultDTO(run);
+            txManager.commit();
+            return result;
+        } catch (Exception e) {
+            try {
+                txManager.rollback();
+            } catch (Exception rollbackEx) {
+                // Ignore
+            }
+            throw e;
+        }
+    }
+    
+    /**
+     * Get run and findings together (for exports).
+     * Uses a single transaction for both operations.
+     */
+    public AnalysisResultDTO getRunWithFindings(Long analysisRunId, 
+                                                java.util.function.Consumer<List<FindingSummaryDTO>> findingsConsumer) 
+            throws Exception {
+        try {
+            txManager.begin();
+            
+            // Get run
+            AnalysisRun run = analysisRunRepo.findById(analysisRunId)
+                .orElseThrow(() -> new Exception("Analysis run not found: " + analysisRunId));
+            AnalysisResultDTO result = mapToResultDTO(run);
+            
+            // Get findings
+            List<Finding> findings = findingRepo.findByAnalysisRunId(analysisRunId);
+            List<FindingSummaryDTO> findingDTOs = findings.stream()
+                .map(this::mapToFindingSummary)
+                .collect(java.util.stream.Collectors.toList());
+            
             txManager.commit();
             
-            return mapToResultDTO(run);
+            // Pass findings to consumer
+            findingsConsumer.accept(findingDTOs);
+            
+            return result;
         } catch (Exception e) {
-            txManager.rollback();
+            try {
+                txManager.rollback();
+            } catch (Exception rollbackEx) {
+                // Ignore
+            }
             throw e;
         }
     }
@@ -214,11 +245,10 @@ public class HistoryQueryService {
         return dto;
     }
     
-    private FindingSummaryDTO mapToFindingSummary(Finding finding, 
-                                                   java.util.Map<Long, String> filePathMap) {
+    private FindingSummaryDTO mapToFindingSummary(Finding finding) {
         FindingSummaryDTO dto = new FindingSummaryDTO();
         dto.setFindingId(finding.getId());
-        dto.setFilePath(filePathMap.getOrDefault(finding.getDiffFileId(), "Unknown"));
+        dto.setFilePath(finding.getFilePath() != null ? finding.getFilePath() : "Unknown");
         dto.setLineNumber(finding.getLineNumber());
         dto.setRuleId(finding.getRuleId());
         dto.setCategory(finding.getCategory());

@@ -37,6 +37,7 @@ public class AppFactory {
     private final AnalyticsService analyticsService;
     private final PolicyAdminService policyAdminService;
     private final ExportService exportService;
+    private final LoginService loginService;
     
     public AppFactory() {
         // Load config
@@ -88,7 +89,13 @@ public class AppFactory {
             txManager
         );
         
-        this.exportService = new ExportService(historyQueryService);
+        this.exportService = new ExportService(
+            analysisRunRepository,
+            findingRepository,
+            txManager
+        );
+        
+        this.loginService = new LoginService(userRepository);
     }
     
     public JdbcTxManager getTxManager() {
@@ -123,6 +130,10 @@ public class AppFactory {
         return userRepository;
     }
     
+    public LoginService getLoginService() {
+        return loginService;
+    }
+    
     /**
      * Crea o obtiene usuario demo para testing.
      */
@@ -138,7 +149,7 @@ public class AppFactory {
             }
             
             // Crear usuario demo
-            User user = new User(null, "demo", "demo@example.com", UserRole.DEV);
+            User user = new User(null, "demo", "demo@example.com", UserRole.DEVELOPER);
             
             user = userRepository.save(user);
             txManager.commit();
@@ -151,7 +162,7 @@ public class AppFactory {
                 // Ignorar errores de rollback
             }
             // Retornar usuario temporal sin persistir
-            return new User(1L, "demo", "demo@example.com", UserRole.DEV);
+            return new User(1L, "demo", "demo@example.com", UserRole.DEVELOPER);
         }
     }
 }

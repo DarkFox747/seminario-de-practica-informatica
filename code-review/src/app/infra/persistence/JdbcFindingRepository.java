@@ -217,13 +217,14 @@ public class JdbcFindingRepository implements FindingRepository {
         Finding finding = new Finding();
         finding.setId(rs.getLong("id"));
         finding.setAnalysisRunId(rs.getLong("run_id"));
+        finding.setFilePath(rs.getString("file_path"));
         finding.setRuleId(rs.getString("code"));
         finding.setCategory(rs.getString("category"));
         finding.setMessage(rs.getString("title")); // or "description"
         finding.setSeverityRaw(Severity.valueOf(rs.getString("severity_code")));
         finding.setSeverityFinal(Severity.valueOf(rs.getString("severity_code")));
         finding.setLineNumber(getInteger(rs, "line_start"));
-        // Note: DB doesn't store diff_file_id, code_snippet, suggestion
+        // Note: DB stores file_path directly, not diff_file_id
         return finding;
     }
     

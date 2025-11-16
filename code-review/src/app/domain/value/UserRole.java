@@ -2,17 +2,23 @@ package app.domain.value;
 
 /**
  * User roles in the code review system.
+ * Must match values in user_role_type catalog table.
  */
 public enum UserRole {
     /**
      * Developer - can run analysis and view their own reports
      */
-    DEV,
+    DEVELOPER,
     
     /**
      * Tech Lead - can view analytics, dashboards and manage policies
      */
-    TL,
+    TECH_LEAD,
+    
+    /**
+     * QA - Quality Assurance
+     */
+    QA,
     
     /**
      * Admin - full system access
