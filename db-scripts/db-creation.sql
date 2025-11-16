@@ -47,12 +47,13 @@ CREATE TABLE severity_type (
 
 DROP TABLE IF EXISTS users;
 CREATE TABLE users (
-  id          BIGINT       NOT NULL AUTO_INCREMENT,
-  name        VARCHAR(120) NOT NULL,
-  email       VARCHAR(180) NOT NULL,
-  role_code   VARCHAR(20)  NOT NULL,
-  active      TINYINT(1)   NOT NULL DEFAULT 1,
-  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id            BIGINT       NOT NULL AUTO_INCREMENT,
+  name          VARCHAR(120) NOT NULL,
+  email         VARCHAR(180) NOT NULL,
+  password_hash VARCHAR(255) NULL,
+  role_code     VARCHAR(20)  NOT NULL,
+  active        TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT pk_users PRIMARY KEY (id),
   CONSTRAINT uq_users_email UNIQUE (email),
   CONSTRAINT fk_users_role FOREIGN KEY (role_code)

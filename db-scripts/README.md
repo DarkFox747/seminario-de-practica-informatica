@@ -53,12 +53,26 @@ mysql -h <HOST> -u <USER> -p code_review_local < seed.sql
 ```
 
 Esto creará:
-- 4 usuarios de prueba (Developer, Tech Lead, QA, Admin)
+- 4 usuarios de prueba con autenticación (Developer, Tech Lead, QA, Admin)
+- Contraseñas hasheadas con SHA-256 para todos los usuarios
 - 1 repositorio de ejemplo
-- 2 políticas de severidad versionadas
+- 1 política de severidad activa
 - 1 endpoint mock para simular análisis
 - 1 análisis exitoso con findings y diff files
 - Métricas y estadísticas agregadas
+
+### 🔑 Credenciales de acceso (usuarios de prueba)
+
+Todos los usuarios tienen contraseñas hasheadas con SHA-256:
+
+| Email | Contraseña | Rol | Hash SHA-256 |
+|-------|-----------|-----|--------------|
+| `demo@example.com` | `demo123` | DEVELOPER | `d3ad9315...` |
+| `lead@example.com` | `lead123` | TECH_LEAD | `8c6976e5...` |
+| `qa@example.com` | `qa123` | QA | `9f735e0d...` |
+| `admin@example.com` | `admin123` | ADMIN | `240be518...` |
+
+> **Nota**: Para producción, cambiar estas contraseñas y usar un algoritmo más robusto como bcrypt o Argon2.
 
 ### 3) Ejecutar plantillas de inserción/consulta/borrado
 
@@ -76,23 +90,25 @@ mysql -h <HOST> -u <USER> -p code_review_local < Comandos_SQL_PR_DB.sql
 
 El archivo `seed.sql` proporciona un conjunto completo de datos de prueba que incluye:
 
-### Usuarios (4 usuarios con diferentes roles)
-- **Diego Soler** (`diego@crombie.dev`) - Developer
-- **Lucía Romero** (`lucia@crombie.dev`) - Tech Lead
-- **Mariano Funes** (`mariano@crombie.dev`) - QA
-- **Admin System** (`admin@crombie.dev`) - Admin
+### Usuarios (4 usuarios con diferentes roles y autenticación)
+- **Demo Developer** (`demo@example.com` / `demo123`) - Developer
+- **Team Lead** (`lead@example.com` / `lead123`) - Tech Lead
+- **QA Tester** (`qa@example.com` / `qa123`) - QA
+- **Admin User** (`admin@example.com` / `admin123`) - Admin
+
+> Todos los passwords están hasheados con SHA-256 y almacenados en la columna `password_hash`.
 
 ### Análisis y datos relacionados
-- **1 repositorio**: `/Users/diego/projects/code-review-assistant`
-- **2 políticas de severidad** versionadas (v1 y v2)
+- **1 repositorio**: `C:\projects\sample-repo`
+- **1 política de severidad** activa (Default Policy)
 - **1 endpoint mock** configurado para simular respuestas de análisis
-- **1 análisis exitoso** (`run-001`) con:
-  - 3 archivos modificados (UserService.java, User.java, README.md)
-  - 4 findings de diferentes severidades:
-    - **CRITICAL**: Contraseña hardcodeada
-    - **HIGH**: Consulta SQL sin índice
-    - **MEDIUM**: Clase sin Javadoc
-    - **LOW**: Método con demasiadas líneas
+- **1 análisis exitoso** con:
+  - 5 archivos modificados (UserService.java, UserController.java, User.java, README.md, pom.xml)
+  - 8 findings de diferentes severidades:
+    - **CRITICAL**: Contraseña hardcodeada, SQL Injection, Vulnerable Dependency
+    - **HIGH**: N+1 Query detectada
+    - **MEDIUM**: Missing Javadoc (2 hallazgos)
+    - **LOW**: Método largo, Magic Number
 
 ### Métricas y estadísticas
 - Estadísticas de usuario para los últimos 7 días
@@ -104,10 +120,30 @@ El archivo `seed.sql` proporciona un conjunto completo de datos de prueba que in
 ## 🛠️ Notas técnicas
 
 - El DDL crea la BD `code_review_local` y configura `utf8mb4_0900_ai_ci`.
+- La tabla `users` incluye la columna `password_hash` (VARCHAR(255)) para autenticación.
+- Los passwords se hashean con **SHA-256** en la aplicación antes de almacenarse.
 - Todas las FKs están ordenadas para evitar errores de dependencia.
 - Se usan tablas de catálogo (`user_role_type`, `run_status_type`, `file_change_type`, `severity_type`) para normalización.
 - Campos de auditoría/fechas emplean `CURRENT_TIMESTAMP`.
 - Las políticas de severidad se versionan y pueden tener fechas de vigencia diferentes.
+
+---
+
+## 📋 Migración de password_hash
+
+Si ya tenés una BD existente **sin** la columna `password_hash`, ejecutá:
+
+```bash
+mysql -u root -p code_review_local < add-user-password.sql
+```
+
+Este script agrega la columna y actualiza el usuario demo con el hash correcto.
+
+Para actualizar solo el hash del usuario demo (si ya existe la columna):
+
+```bash
+mysql -u root -p code_review_local < fix-password-hash.sql
+```
 
 ---
 
@@ -121,23 +157,31 @@ El archivo `seed.sql` proporciona un conjunto completo de datos de prueba que in
 2. **Datos de seed cargados**  
    ```sql
    SELECT COUNT(*) FROM users;  -- Debería retornar 4
-   SELECT COUNT(*) FROM findings; -- Debería retornar 4
+   SELECT COUNT(*) FROM findings; -- Debería retornar 8
    ```
-3. **Consulta de verificación de análisis**  
+3. **Verificar autenticación de usuarios**  
    ```sql
-   SELECT id, base_branch, target_branch, status_code 
+   SELECT id, name, email, role_code, 
+          LEFT(password_hash, 8) AS hash_preview
+   FROM users;
+   ```
+4. **Consulta de verificación de análisis**  
+   ```sql
+   SELECT id, base_branch, target_branch, status_code, total_findings
    FROM analysis_runs 
-   WHERE user_id='u-001';
+   WHERE user_id = 1;
    ```
 
 ---
 
 ## 🔐 Seguridad y buenas prácticas
 
-- No comitees credenciales. Usá variables de entorno o un gestor de secretos.
+- **Passwords**: La aplicación usa **SHA-256** para hashear contraseñas. Para producción, considera usar **bcrypt**, **Argon2** o **PBKDF2** que son más seguros contra ataques de fuerza bruta.
+- No comitees credenciales reales. Usá variables de entorno o un gestor de secretos.
 - Asegurá **TLS** en la conexión a MySQL si es remoto.
 - Asigná privilegios mínimos al usuario de base de datos.
-- Rotá/limpiá datos en tablas voluminosas (`auditoria`, `metric_event`) según política.
+- Cambia las contraseñas de prueba antes de usar en cualquier entorno no local.
+- Rotá/limpiá datos en tablas voluminosas (`findings`, `analysis_runs`) según política de retención.
 
 ---
 

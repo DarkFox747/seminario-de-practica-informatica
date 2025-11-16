@@ -8,7 +8,8 @@ import app.domain.value.Severity;
 public class Finding {
     private Long id;
     private Long analysisRunId;
-    private Long diffFileId;
+    private Long diffFileId;  // Legacy field for relationship (may be null)
+    private String filePath;  // Direct file path from DB
     private String ruleId;
     private String category;
     private String message;
@@ -51,6 +52,14 @@ public class Finding {
 
     public void setDiffFileId(Long diffFileId) {
         this.diffFileId = diffFileId;
+    }
+
+    public String getFilePath() {
+        return filePath;
+    }
+
+    public void setFilePath(String filePath) {
+        this.filePath = filePath;
     }
 
     public String getRuleId() {

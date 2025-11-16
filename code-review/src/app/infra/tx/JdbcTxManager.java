@@ -45,6 +45,20 @@ public class JdbcTxManager implements TxManager {
     @Override
     public Connection getConnection() throws TxException {
         Connection conn = connectionHolder.get();
+        
+        // Check if connection exists and is still valid
+        try {
+            if (conn != null && conn.isClosed()) {
+                // Connection is closed, clean up and create new one
+                connectionHolder.remove();
+                conn = null;
+            }
+        } catch (SQLException e) {
+            // If we can't check, assume it's bad and clean up
+            connectionHolder.remove();
+            conn = null;
+        }
+        
         if (conn == null) {
             begin();
             conn = connectionHolder.get();
@@ -126,6 +140,26 @@ public class JdbcTxManager implements TxManager {
             } finally {
                 connectionHolder.remove();
             }
+        }
+    }
+    
+    @Override
+    public boolean isActive() {
+        return connectionHolder.get() != null;
+    }
+    
+    @Override
+    public void forceCleanup() {
+        Connection conn = connectionHolder.get();
+        if (conn != null) {
+            try {
+                if (!conn.isClosed()) {
+                    conn.rollback();  // Rollback any uncommitted changes
+                }
+            } catch (SQLException e) {
+                System.err.println("Error during force cleanup rollback: " + e.getMessage());
+            }
+            close();  // Close and remove from ThreadLocal
         }
     }
 }

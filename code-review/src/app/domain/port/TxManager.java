@@ -41,4 +41,17 @@ public interface TxManager {
      * Close current connection.
      */
     void close();
+    
+    /**
+     * Check if there is an active transaction.
+     * 
+     * @return true if a transaction is active, false otherwise
+     */
+    boolean isActive();
+    
+    /**
+     * Force cleanup of any active transaction.
+     * Closes connection without commit or rollback.
+     */
+    void forceCleanup();
 }

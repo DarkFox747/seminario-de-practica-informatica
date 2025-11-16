@@ -30,6 +30,7 @@ public class HistoryView extends BorderPane {
     // Controls
     private ComboBox<String> periodCombo;
     private Button refreshButton;
+    private Button exportButton;
     private LoadingIndicator loadingIndicator;
     
     private TableView<AnalysisRun> runsTable;
@@ -37,6 +38,7 @@ public class HistoryView extends BorderPane {
     private ComboBox<String> severityFilterCombo;
     private Label findingsCountLabel;
     
+    private Long currentSelectedRunId;
     private List<FindingSummaryDTO> allFindings = new ArrayList<>();
     
     public HistoryView(HistoryController controller) {
@@ -62,7 +64,11 @@ public class HistoryView extends BorderPane {
         refreshButton = new Button("Refresh");
         refreshButton.setOnAction(e -> loadRuns());
         
-        HBox toolbar = new HBox(10, periodLabel, periodCombo, refreshButton);
+        exportButton = new Button("Export CSV");
+        exportButton.setOnAction(e -> exportCurrentRun());
+        exportButton.setDisable(true); // Disabled until a run is selected
+        
+        HBox toolbar = new HBox(10, periodLabel, periodCombo, refreshButton, exportButton);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         
         VBox header = new VBox(10, titleLabel, toolbar);
@@ -229,6 +235,8 @@ public class HistoryView extends BorderPane {
     }
     
     private void loadFindingsForRun(Long runId) {
+        currentSelectedRunId = runId;
+        exportButton.setDisable(false); // Enable export button
         loadingIndicator.show("Loading findings...");
         
         controller.loadFindingsForRun(runId, findings -> {
@@ -248,6 +256,29 @@ public class HistoryView extends BorderPane {
             findingsTable.getItems().clear();
             findingsTable.getItems().addAll(filtered);
             findingsCountLabel.setText(filtered.size() + " findings");
+        });
+    }
+    
+    private void exportCurrentRun() {
+        if (currentSelectedRunId == null) {
+            app.ui.common.ConfirmDialog.showWarning("No Selection", "Please select an analysis run to export.");
+            return;
+        }
+        
+        exportButton.setDisable(true);
+        loadingIndicator.show("Exporting to CSV...");
+        
+        controller.exportToCSV(currentSelectedRunId, success -> {
+            loadingIndicator.hide();
+            exportButton.setDisable(false);
+            
+            if (success) {
+                app.ui.common.ConfirmDialog.showInfo("Export Complete", 
+                    "Analysis results exported successfully to CSV.");
+            } else {
+                app.ui.common.ConfirmDialog.showWarning("Export Failed", 
+                    "Failed to export analysis results.");
+            }
         });
     }
 }
